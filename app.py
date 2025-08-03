@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import os
 import secrets
-import matplotlib.pyplot as plt
+import matplotlib as plt
 
 # Set page config
 st.set_page_config(
@@ -297,3 +297,4 @@ if __name__ == "__main__":
     
     # Run the main app
     main()
+
