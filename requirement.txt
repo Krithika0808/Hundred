@@ -1,6 +1,10 @@
 streamlit
 pandas
 numpy
-matplotlib
-seaborn
 plotly
+plotly.express
+plotly.subplots
+seaborn
+matplotlib
+matplotlib.pyplot
+datetime
