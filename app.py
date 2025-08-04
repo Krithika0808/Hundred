@@ -959,15 +959,13 @@ def main():
                 st.dataframe(summary.sort_values(by='Dismissals', ascending=False), use_container_width=True)
                 
                 # Display charts in columns
-                col1, col2 = st.columns(2)
+                col1, col2 = st.columns(1)
                 
                 with col1:
                     st.subheader("📊 Dismissals by Fielding Zone")
                     st.plotly_chart(fig1, use_container_width=True)
                 
-                with col2:
-                    st.subheader("🥧 Dismissal Timing Breakdown")
-                    st.plotly_chart(fig2, use_container_width=True)
+        
                 
                 # Heatmap
                 st.subheader("🔥 Heatmap: Line vs Length Dismissals")
@@ -992,3 +990,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
