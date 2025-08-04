@@ -715,7 +715,7 @@ def create_dismissal_analysis(df, selected_batter):
     if dismissals.empty:
         return None, None, None, None
     
-)
+    ))
     
     # Line vs Length Heatmap
     if 'lineTypeId' in dismissals.columns and 'lengthTypeId' in dismissals.columns:
@@ -988,6 +988,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
