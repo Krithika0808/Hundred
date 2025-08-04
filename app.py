@@ -972,7 +972,7 @@ def main():
                 # Summary Table
                 st.subheader("🧠 Dismissal Zones Summary")
                 summary = dismissals.groupby(
-                    ['fieldingPosition', 'lineTypeId', 'lengthTypeId', 'bowlingTypeId', 'Timing']
+                    ['fieldingPosition', 'lineTypeId', 'lengthTypeId', 'bowlingTypeId']
                 ).size().reset_index(name='dismissals')
                 st.dataframe(summary.sort_values(by='dismissals', ascending=False), use_container_width=True)
 
@@ -1015,8 +1015,6 @@ def main():
                     🧲 **Bowling Type**: {top_row.get('bowlingTypeId', 'N/A')}  
                     🎯 **Line**: {top_row.get('lineTypeId', 'N/A')}  
                     📏 **Length**: {top_row.get('lengthTypeId', 'N/A')}  
-                    🧲 **Target Zone**: {top_row.get('fieldingPosition', 'N/A')}  
-                    ⌛ **Likely Timing**: {top_row.get('Timing', 'N/A')}
                     """
                     st.markdown(suggestion)
         else:
@@ -1024,6 +1022,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
