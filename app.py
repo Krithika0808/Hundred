@@ -51,12 +51,6 @@ st.markdown("""
         margin: 0.5rem 0;
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
-    .stMetric > div[data-testid="metric-container"] {
-        background-color: rgba(255,255,255,0.05);
-        border: 1px solid rgba(49,51,63,0.2);
-        padding: 0.5rem;
-        border-radius: 0.5rem;
-    }
     .insight-card {
         background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
         padding: 1.5rem;
@@ -167,6 +161,7 @@ def create_sample_data():
     bowling_types = ['Fast', 'Medium', 'Spin', 'Swing', 'Seam']
     bowling_from = ['Over the Wicket', 'Around the Wicket']
     bowling_hands = ['Right Arm', 'Left Arm']
+    fielding_positions = ['Cover', 'Mid Wicket', 'Point', 'Third Man', 'Fine Leg', 'Square Leg', 'Long On', 'Long Off']
     
     n_rows = 1000
     
@@ -180,6 +175,7 @@ def create_sample_data():
         'shotMagnitude': np.random.uniform(50, 200, n_rows),
         'isAirControlled': np.random.choice([True, False], n_rows, p=[0.3, 0.7]),
         'isBoundary': np.random.choice([True, False], n_rows, p=[0.15, 0.85]),
+        'isWicket': np.random.choice([True, False], n_rows, p=[0.05, 0.95]),
         'commentary': ['Good shot!', 'Excellent timing!', 'Mistimed!', 'Great connection!'] * (n_rows // 4),
         'fixtureId': np.random.randint(1, 21, n_rows),
         'battingTeam': np.random.choice(['Team A', 'Team B', 'Team C', 'Team D'], n_rows),
@@ -189,7 +185,8 @@ def create_sample_data():
         'lineTypeId': np.random.choice(line_types, n_rows),
         'bowlingTypeId': np.random.choice(bowling_types, n_rows),
         'bowlingFromId': np.random.choice(bowling_from, n_rows),
-        'bowlingHandId': np.random.choice(bowling_hands, n_rows)
+        'bowlingHandId': np.random.choice(bowling_hands, n_rows),
+        'fieldingPosition': np.random.choice(fielding_positions, n_rows)
     }
     
     df = pd.DataFrame(data)
@@ -308,7 +305,7 @@ def calculate_shot_intelligence_metrics(df):
     
     df['control_quality_score'] = df['battingConnectionId'].map(control_scores).fillna(1.5)
     
-    # Create angle_zone column early (moved from later in the function)
+    # Create angle_zone column early
     valid_angles = (df['shotAngle'] >= 0) & (df['shotAngle'] <= 360)
     df.loc[~valid_angles, 'shotAngle'] = 0
     
@@ -329,19 +326,10 @@ def calculate_shot_intelligence_metrics(df):
     good_placements = ['Cover', 'Mid Wicket', 'Long On', 'Long Off']
     df['control_score'] += df['angle_zone'].isin(good_placements) * 10
     
-    # Add contextual factors
-    if 'match_phase' in df.columns:
-        phase_bonus = {
-            'Powerplay (1-25)': 10,
-            'Middle (26-75)': 5,
-            'Death (76-100)': 0
-        }
-        df['control_score'] += df['match_phase'].map(phase_bonus).fillna(5)
-    
     # Cap at 100
     df['control_score'] = df['control_score'].clip(0, 100)
     
-    # Define controlled shots as score >= 50 (this threshold can be adjusted)
+    # Define controlled shots as score >= 50
     df['is_controlled_shot'] = (df['control_score'] >= 50).astype(int)
     
     # 3. Shot Execution Intelligence
@@ -445,98 +433,49 @@ def get_player_insights(player_data):
                 dismissal_percentage = (dismissal_count / total_poor) * 100
                 insights['dismissal_pattern'] = f"{dismissal_zone} ({dismissal_percentage:.1f}% of poor control shots)"
     
-    # 3. Bowling Recommendations (connected to dismissal pattern)
+    # 3. Bowling Recommendations
     bowling_columns = ['lengthTypeId', 'lineTypeId', 'bowlingTypeId', 'bowlingFromId', 'bowlingHandId']
     available_bowling_cols = [col for col in bowling_columns if col in player_data.columns]
     
-    if available_bowling_cols and 'control_score' in player_data.columns and dismissal_zone:
-        # Focus on poor control shots that go to the dismissal zone
-        poor_control_shots = player_data[player_data['true_control_category'].isin(['Poor Control', 'Less Control'])]
-        dismissal_area_shots = poor_control_shots[poor_control_shots['angle_zone'] == dismissal_zone]
+    if available_bowling_cols and 'control_score' in player_data.columns:
+        bowling_weaknesses = []
         
-        if not dismissal_area_shots.empty:
-            # Analyze bowling attributes that lead to poor control in the dismissal area
-            bowling_recommendations = []
-            
-            for col in available_bowling_cols:
-                if col in player_data.columns:
-                    # Group by the bowling attribute and calculate average control score
-                    # Only consider shots that went to the dismissal area with poor control
-                    attr_control = dismissal_area_shots.groupby(col)['control_score'].mean()
+        for col in available_bowling_cols:
+            if col in player_data.columns:
+                # Group by the bowling attribute and calculate average control score
+                attr_control = player_data.groupby(col)['control_score'].mean()
+                if not attr_control.empty:
+                    # Find the attribute value with lowest control score
+                    weakest_attr = attr_control.idxmin()
+                    weakest_score = attr_control.min()
                     
-                    if not attr_control.empty and len(attr_control) >= 3:  # Ensure enough data points
-                        # Find the attribute value with lowest control score
-                        weakest_attr = attr_control.idxmin()
-                        weakest_score = attr_control.min()
+                    # Only consider it a weakness if control score is below 60
+                    if weakest_score < 60:
+                        # Format the attribute name for display
+                        col_names = {
+                            'lengthTypeId': 'Length',
+                            'lineTypeId': 'Line',
+                            'bowlingTypeId': 'Type',
+                            'bowlingFromId': 'From',
+                            'bowlingHandId': 'Hand'
+                        }
                         
-                        # Only consider it a weakness if control score is below 60
-                        if weakest_score < 40:
-                            # Format the attribute name for display
-                            col_names = {
-                                'lengthTypeId': 'Length',
-                                'lineTypeId': 'Line',
-                                'bowlingTypeId': 'Type',
-                                'bowlingFromId': 'From',
-                                'bowlingHandId': 'Hand'
-                            }
-                            
-                            display_name = col_names.get(col, col)
-                            bowling_recommendations.append((display_name, weakest_attr, weakest_score))
+                        display_name = col_names.get(col, col)
+                        bowling_weaknesses.append((display_name, weakest_attr, weakest_score))
+        
+        # Sort by control score to find the biggest weaknesses
+        if bowling_weaknesses:
+            bowling_weaknesses.sort(key=lambda x: x[2])  # Sort by control score
             
-            # Sort by control score to find the biggest weaknesses
-            if bowling_recommendations:
-                bowling_recommendations.sort(key=lambda x: x[2])  # Sort by control score
-                
-                # Take top 2-3 weaknesses
-                top_weaknesses = bowling_recommendations[:3]
-                
-                # Format the recommendations
-                recommendations = []
-                for name, value, score in top_weaknesses:
-                    recommendations.append(f"{name}: {value} ({score:.1f}/100)")
-                
-                insights['bowl_to'] = recommendations
-                insights['bowl_to_connection'] = dismissal_zone
-        else:
-            # Fallback to general weaknesses if no specific dismissal area data
-            bowling_weaknesses = []
+            # Take top 2-3 weaknesses
+            top_weaknesses = bowling_weaknesses[:3]
             
-            for col in available_bowling_cols:
-                if col in player_data.columns:
-                    # Group by the bowling attribute and calculate average control score
-                    attr_control = player_data.groupby(col)['control_score'].mean()
-                    if not attr_control.empty:
-                        # Find the attribute value with lowest control score
-                        weakest_attr = attr_control.idxmin()
-                        weakest_score = attr_control.min()
-                        
-                        # Only consider it a weakness if control score is below 60
-                        if weakest_score < 60:
-                            # Format the attribute name for display
-                            col_names = {
-                                'lengthTypeId': 'Length',
-                                'lineTypeId': 'Line',
-                                'bowlingTypeId': 'Type',
-                                'bowlingFromId': 'From',
-                                'bowlingHandId': 'Hand'
-                            }
-                            
-                            display_name = col_names.get(col, col)
-                            bowling_weaknesses.append((display_name, weakest_attr, weakest_score))
+            # Format the recommendations
+            recommendations = []
+            for name, value, score in top_weaknesses:
+                recommendations.append(f"{name}: {value} ({score:.1f}/100)")
             
-            # Sort by control score to find the biggest weaknesses
-            if bowling_weaknesses:
-                bowling_weaknesses.sort(key=lambda x: x[2])  # Sort by control score
-                
-                # Take top 2-3 weaknesses
-                top_weaknesses = bowling_weaknesses[:3]
-                
-                # Format the recommendations
-                recommendations = []
-                for name, value, score in top_weaknesses:
-                    recommendations.append(f"{name}: {value} ({score:.1f}/100)")
-                
-                insights['bowl_to'] = recommendations
+            insights['bowl_to'] = recommendations
     
     # 4. Strength Areas
     if 'angle_zone' in player_data.columns and 'control_score' in player_data.columns:
@@ -579,16 +518,6 @@ def create_shot_angle_heatmap(df, player_name):
         return go.Figure()
     
     fig = go.Figure()
-    
-    # Create color mapping based on control score instead of just binary control
-    colors = []
-    for _, row in player_data.iterrows():
-        if row['control_score'] >= 80:
-            colors.append('green')
-        elif row['control_score'] >= 50:
-            colors.append('orange')
-        else:
-            colors.append('red')
     
     # Add scatter plot for shots
     hover_text = []
@@ -650,7 +579,7 @@ def create_control_vs_aggression_chart(df):
         'is_controlled_shot': 'mean',
         'runs': 'mean',
         'is_boundary': 'mean',
-        'control_score': 'mean'  # Changed from control_quality_score to control_score
+        'control_score': 'mean'
     }).reset_index()
     
     shot_counts = df.groupby(['battingShotTypeId']).size().reset_index(name='shot_count')
@@ -746,7 +675,7 @@ def create_player_comparison_radar(df, selected_players):
             control_rate = player_data['is_controlled_shot'].mean() * 100
             avg_runs = player_data['runs'].mean() * 25  # Scale for radar
             boundary_pct = player_data['is_boundary'].mean() * 100
-            control_quality = player_data['control_score'].mean()  # Use control_score instead of control_quality_score
+            control_quality = player_data['control_score'].mean()
             shot_efficiency = min(player_data['true_shot_efficiency'].mean() * 10, 100)  # Cap at 100
             
             metrics.append([control_rate, avg_runs, boundary_pct, control_quality, shot_efficiency])
@@ -778,6 +707,65 @@ def create_player_comparison_radar(df, selected_players):
     )
     
     return fig
+
+def create_dismissal_analysis(df, selected_batter):
+    """Create dismissal analysis charts"""
+    dismissals = df[(df['batsman'] == selected_batter) & (df['isWicket'] == True)]
+    
+    if dismissals.empty:
+        return None, None, None, None
+    
+    # Timing Mapping
+    timing_map = {
+        'WellTimed': 'WellTimed',
+        'Undercontrol': 'Controlled',
+        'Missed': 'Missed',
+        'Edge': 'Edged',
+        'NotApplicable': 'Unknown',
+        np.nan: 'Unknown'
+    }
+    dismissals['Timing'] = dismissals['battingConnectionId'].map(timing_map).fillna('Unknown')
+    
+    # Summary Table
+    summary = dismissals.groupby(
+        ['fieldingPosition', 'lineTypeId', 'lengthTypeId', 'bowlingTypeId', 'Timing']
+    ).size().reset_index(name='Dismissals') if 'fieldingPosition' in dismissals.columns else pd.DataFrame()
+    
+    # Dismissals by fielding position
+    if 'fieldingPosition' in dismissals.columns:
+        zone_counts = dismissals['fieldingPosition'].value_counts().reset_index()
+        zone_counts.columns = ['Fielding Position', 'Dismissals']
+        fig1 = px.bar(
+            zone_counts,
+            x='Fielding Position', y='Dismissals',
+            color='Fielding Position', title='Dismissals by Fielding Position'
+        )
+    else:
+        fig1 = go.Figure()
+    
+    # Dismissal timing pie
+    fig2 = px.pie(
+        dismissals,
+        names='Timing',
+        title='Dismissal Timing Distribution',
+        hole=0.4
+    )
+    
+    # Line vs Length Heatmap
+    if 'lineTypeId' in dismissals.columns and 'lengthTypeId' in dismissals.columns:
+        heatmap_data = dismissals.groupby(['lineTypeId', 'lengthTypeId']).size().unstack(fill_value=0)
+        fig3 = go.Figure(data=go.Heatmap(
+            z=heatmap_data.values,
+            x=heatmap_data.columns,
+            y=heatmap_data.index,
+            colorscale='Reds',
+            hoverongaps=False
+        ))
+        fig3.update_layout(xaxis_title='Length', yaxis_title='Line', title='Line vs Length Dismissals Heatmap')
+    else:
+        fig3 = go.Figure()
+    
+    return summary, fig1, fig2, fig3
 
 def main():
     """Main Streamlit app"""
@@ -935,11 +923,6 @@ def main():
                                 st.markdown('<div class="bowling-recommendation">', unsafe_allow_html=True)
                                 for rec in insights['bowl_to']:
                                     st.markdown(f'<div class="recommendation-item">• {rec}</div>', unsafe_allow_html=True)
-                                
-                                # Add connection note if available
-                                if 'bowl_to_connection' in insights:
-                                    st.markdown(f'<div class="connection-note">Targets dismissals to {insights["bowl_to_connection"]}</div>', unsafe_allow_html=True)
-                                
                                 st.markdown('</div>', unsafe_allow_html=True)
                             
                             if 'strength_area' in insights:
@@ -964,84 +947,48 @@ def main():
     
     with tab6:
         st.header("📉 Bowl-To Strategy: Dismissal Analysis")
-
-# Filter dismissal data for selected batter
-dismissals = df[(df['batsman'] == selected_batter) & (df['isWicket'] == True)]
-
-if dismissals.empty:
-    st.info("No dismissal data available for this player.")
-else:
-    # Timing Mapping
-    timing_map = {
-        'WellTimed': 'WellTimed',
-        'Undercontrol': 'Controlled',
-        'Missed': 'Missed',
-        'Edge': 'Edged',
-        'NotApplicable': 'Unknown',
-        np.nan: 'Unknown'
-    }
-    dismissals['Timing'] = dismissals['battingConnectionId'].map(timing_map).fillna('Unknown')
-
-    # Summary Table
-    st.subheader("🧠 Dismissal Zones Summary")
-    summary = dismissals.groupby(
-        ['fieldingPosition', 'lineTypeId', 'lengthTypeId', 'bowlingTypeId', 'Timing']
-    ).size().reset_index(name='Dismissals')
-    st.dataframe(summary.sort_values(by='Dismissals', ascending=False), use_container_width=True)
-
-    # Dismissals by fielding position
-    st.subheader("📊 Dismissals by Fielding Zone")
-    zone_counts = dismissals['fieldingPosition'].value_counts().reset_index()
-    zone_counts.columns = ['Fielding Position', 'Dismissals']
-    fig1 = px.bar(
-        zone_counts,
-        x='Fielding Position', y='Dismissals',
-        color='Fielding Position', title='Dismissals by Fielding Position'
-    )
-    st.plotly_chart(fig1, use_container_width=True)
-
-    # Dismissal timing pie
-    st.subheader("🥧 Dismissal Timing Breakdown")
-    fig2 = px.pie(
-        dismissals,
-        names='Timing',
-        title='Dismissal Timing Distribution',
-        hole=0.4
-    )
-    st.plotly_chart(fig2, use_container_width=True)
-
-    # Line vs Length Heatmap
-    st.subheader("🔥 Heatmap: Line vs Length Dismissals")
-    heatmap_data = dismissals.groupby(['lineTypeId', 'lengthTypeId']).size().unstack().fillna(0)
-    fig3 = go.Figure(data=go.Heatmap(
-        z=heatmap_data.values,
-        x=heatmap_data.columns,
-        y=heatmap_data.index,
-        colorscale='Reds',
-        hoverongaps=False
-    ))
-    fig3.update_layout(xaxis_title='Length', yaxis_title='Line')
-    st.plotly_chart(fig3, use_container_width=True)
-
-    # Optional: Simple recommendation logic
-    st.subheader("🧾 Suggested Bowling Plan")
-    top_row = summary.sort_values(by='Dismissals', ascending=False).iloc[0]
-    suggestion = f"""
-    🧲 **Bowling Type**: `{top_row['bowlingTypeId']}`  
-    🎯 **Line**: `{top_row['lineTypeId']}`  
-    📏 **Length**: `{top_row['lengthTypeId']}`  
-    🧲 **Target Zone**: `{top_row['fieldingPosition']}`  
-    ⌛ **Likely Timing**: `{top_row['Timing']}`
-    """
-    st.markdown(suggestion)
-
-# Add information about deployment
-def show_deployment_info():
-    """Show deployment information in sidebar"""
-    pass  # Removed deployment info
+        
+        if selected_players:
+            selected_batter = st.selectbox("Select Batter for Dismissal Analysis", selected_players, key="dismissal_batter")
+            
+            summary, fig1, fig2, fig3 = create_dismissal_analysis(df, selected_batter)
+            
+            if summary is not None and not summary.empty:
+                # Summary Table
+                st.subheader("🧠 Dismissal Zones Summary")
+                st.dataframe(summary.sort_values(by='Dismissals', ascending=False), use_container_width=True)
+                
+                # Display charts in columns
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.subheader("📊 Dismissals by Fielding Zone")
+                    st.plotly_chart(fig1, use_container_width=True)
+                
+                with col2:
+                    st.subheader("🥧 Dismissal Timing Breakdown")
+                    st.plotly_chart(fig2, use_container_width=True)
+                
+                # Heatmap
+                st.subheader("🔥 Heatmap: Line vs Length Dismissals")
+                st.plotly_chart(fig3, use_container_width=True)
+                
+                # Optional: Simple recommendation logic
+                st.subheader("🧾 Suggested Bowling Plan")
+                if not summary.empty:
+                    top_row = summary.sort_values(by='Dismissals', ascending=False).iloc[0]
+                    suggestion = f"""
+                    🧲 **Bowling Type**: `{top_row.get('bowlingTypeId', 'N/A')}`  
+                    🎯 **Line**: `{top_row.get('lineTypeId', 'N/A')}`  
+                    📏 **Length**: `{top_row.get('lengthTypeId', 'N/A')}`  
+                    🧲 **Target Zone**: `{top_row.get('fieldingPosition', 'N/A')}`  
+                    ⌛ **Likely Timing**: `{top_row.get('Timing', 'N/A')}`
+                    """
+                    st.markdown(suggestion)
+            else:
+                st.info("No dismissal data available for this player.")
+        else:
+            st.warning("Please select at least one player from the sidebar for dismissal analysis.")
 
 if __name__ == "__main__":
     main()
-
-
-
