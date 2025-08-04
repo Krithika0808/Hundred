@@ -848,7 +848,7 @@ def main():
         return
     
     # Main dashboard tabs
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "🎯 Shot Placement", 
         "⚡ Control vs Aggression", 
         "📊 Match Phase Analysis",
@@ -978,6 +978,7 @@ def show_deployment_info():
 
 if __name__ == "__main__":
     main()
+
 
 
 
