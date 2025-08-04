@@ -944,51 +944,87 @@ def main():
             st.plotly_chart(radar_fig, use_container_width=True)
         else:
             st.warning("Please select at least 2 players from the sidebar for comparison.")
-    
     with tab6:
-        st.header("📉 Bowl-To Strategy: Dismissal Analysis")
+    st.header("📉 Bowl-To Strategy: Dismissal Analysis")
+    
+    if selected_players:
+        selected_batter = st.selectbox(
+            "Select Batter for Dismissal Analysis",
+            options=selected_players,
+            key="dismissal_batter"
+        )
         
-        if selected_players:
-            selected_batter = st.selectbox("Select Batter for Dismissal Analysis", selected_players, key="dismissal_batter")
-            
-            summary, fig1, fig2, fig3 = create_dismissal_analysis(df, selected_batter)
-            
-            if summary is not None and not summary.empty:
-                # Summary Table
-                st.subheader("🧠 Dismissal Zones Summary")
-                st.dataframe(summary.sort_values(by='Dismissals', ascending=False), use_container_width=True)
-                
-                # Display charts in columns
-                col1 = st.columns(1)
-                
-                with col1:
-                    st.subheader("📊 Dismissals by Fielding Zone")
-                    st.plotly_chart(fig1, use_container_width=True)
-                
+        # Get dismissal analysis data
+        dismissals = df[(df['batsman'] == selected_batter) & (df['isWicket'] == True)]
+        if dismissals.empty:
+            st.info("No dismissal data available for this player")
+            return
         
-                
-                # Heatmap
-                st.subheader("🔥 Heatmap: Line vs Length Dismissals")
-                st.plotly_chart(fig3, use_container_width=True)
-                
-                # Optional: Simple recommendation logic
-                st.subheader("🧾 Suggested Bowling Plan")
-                if not summary.empty:
-                    top_row = summary.sort_values(by='Dismissals', ascending=False).iloc[0]
-                    suggestion = f"""
-                    🧲 **Bowling Type**: `{top_row.get('bowlingTypeId', 'N/A')}`  
-                    🎯 **Line**: `{top_row.get('lineTypeId', 'N/A')}`  
-                    📏 **Length**: `{top_row.get('lengthTypeId', 'N/A')}`  
-                    🧲 **Target Zone**: `{top_row.get('fieldingPosition', 'N/A')}`  
-                    ⌛ **Likely Timing**: `{top_row.get('Timing', 'N/A')}`
-                    """
-                    st.markdown(suggestion)
-            else:
-                st.info("No dismissal data available for this player.")
-        else:
-            st.warning("Please select at least one player from the sidebar for dismissal analysis.")
+        # Timing Mapping
+        timing_map = {
+            'WellTimed': 'Well Timed',
+            'Undercontrol': 'Controlled',
+            'Missed': 'Missed',
+            'Edge': 'Edged',
+            'NotApplicable': 'Unknown'
+        }
+        dismissals['Timing'] = dismissals['battingConnectionId'].map(timing_map).fillna('Unknown')
+        
+        # Summary Table
+        st.subheader("🧠 Dismissal Zones Summary")
+        summary = dismissals.groupby(
+            ['fieldingPosition', 'lineTypeId', 'lengthTypeId', 'bowlingTypeId', 'Timing']
+        ).size().reset_index(name='dismissals')
+        st.dataframe(summary.sort_values(by='dismissals', ascending=False), use_container_width=True)
+        
+        # Create 2-column layout
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("📊 Dismissals by Fielding Zone")
+            zone_counts = dismissals['fieldingPosition'].value_counts().reset_index()
+            zone_counts.columns = ['Fielding Position', 'Dismissals']
+            st.plotly_chart(
+                px.bar(zone_counts, x='Fielding Position', y='dismissals'),
+                use_container_width=True
+            )
+            
+            st.subheader("🥧 Dismissal Timing Breakdown")
+            st.plotly_chart(
+                px.pie(dismissals, names='Timing', hole=0.4),
+                use_container_width=True
+            )
+        
+        with col2:
+            st.subheader("🔥 Heatmap: Line vs Length Dismissals")
+            heatmap_data = dismissals.groupby(['lineTypeId', 'lengthTypeId']).size().unstack().fillna(0)
+            st.plotly_chart(
+                go.Figure(data=go.Heatmap(
+                    z=heatmap_data.values,
+                    x=heatmap_data.columns,
+                    y=heatmap_data.index,
+                    colorscale='Reds'
+                )),
+                use_container_width=True
+            )
+        
+        # Suggested Bowling Plan
+        st.subheader("🧾 Suggested Bowling Plan")
+        if not summary.empty:
+            top_row = summary.sort_values(by='dismissals', ascending=False).iloc[0]
+            suggestion = f"""
+            🧲 **Bowling Type**: {top_row.get('bowlingTypeId', 'N/A')}  
+            🎯 **Line**: {top_row.get('lineTypeId', 'N/A')}  
+            📏 **Length**: {top_row.get('lengthTypeId', 'N/A')}  
+            🧲 **Target Zone**: {top_row.get('fieldingPosition', 'N/A')}  
+            ⌛ **Likely Timing**: {top_row.get('Timing', 'N/A')}
+            """
+            st.markdown(suggestion)
+    else:
+        st.warning("Please select at least one player from the sidebar for dismissal analysis.")
 
 if __name__ == "__main__":
     main()
+
 
 
