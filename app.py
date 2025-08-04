@@ -74,6 +74,14 @@ st.markdown("""
         font-size: 0.85rem;
         margin-top: 0.25rem;
     }
+    .insight-card {
+        background: linear-gradient(135deg, #e8f4fd 0%, #f0f8ff 100%);
+        padding: 1.5rem;
+        border-radius: 0.75rem;
+        border: 2px solid #1f77b4;
+        margin: 1rem 0;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -106,15 +114,15 @@ def load_data_from_github(github_url=None):
             'isAirControlled': 'bool'
         })
         
-       # Boundary detection
-df['is_boundary'] = df.apply(
-    lambda x: 1 if x['runs'] in [4, 6] 
-    else 1 if x.get('isBoundary', False) 
-    else 1 if any(keyword in str(x.get('commentary', '')).lower() 
-                  for keyword in ['four', 'six', 'boundary']) 
-    else 0,
-    axis=1
-)
+        # Boundary detection
+        df['is_boundary'] = df.apply(
+            lambda x: 1 if x['runs'] in [4, 6] 
+            else 1 if x.get('isBoundary', False) 
+            else 1 if any(keyword in str(x.get('commentary', '')).lower() 
+                          for keyword in ['four', 'six', 'boundary']) 
+            else 0,
+            axis=1
+        )
         
         return df
     
@@ -168,7 +176,8 @@ def create_sample_data():
         'lengthTypeId': np.random.choice(length_types, 1000),
         'lineTypeId': np.random.choice(line_types, 1000),
         'bowlingTypeId': np.random.choice(bowling_types, 1000),
-        'fieldingPosition': np.random.choice(fielding_zones, 1000)
+        'fieldingPosition': np.random.choice(fielding_zones, 1000),
+        'isWicket': np.random.choice([True, False], 1000, p=[0.1, 0.9])
     }
     
     df = pd.DataFrame(data)
@@ -228,11 +237,14 @@ def calculate_shot_intelligence_metrics(df):
     df['is_controlled'] = df['control_score'] >= 50
     
     # Efficiency metrics
-    df['shot_efficiency'] = np.where(
-        df['shotMagnitude'] > 0,
-        (df['runs'] * df['control_quality']) / (df['shotMagnitude'] / 100),
-        df['runs'] * df['control_quality']
-    )
+    if 'shotMagnitude' in df.columns:
+        df['shot_efficiency'] = np.where(
+            df['shotMagnitude'] > 0,
+            (df['runs'] * df['control_quality']) / (df['shotMagnitude'] / 100),
+            df['runs'] * df['control_quality']
+        )
+    else:
+        df['shot_efficiency'] = df['runs'] * df['control_quality']
     
     # Match phases
     max_balls = df['totalBallNumber'].max()
@@ -262,7 +274,7 @@ def get_player_insights(player_data):
             insights['favorite_shot'] = f"{shot_counts.index[0]} ({(shot_counts[0]/len(player_data)*100):.1f}%)"
     
     # Dismissal zones
-    if 'fieldingPosition' in player_data.columns:
+    if 'fieldingPosition' in player_data.columns and 'isWicket' in player_data.columns:
         dismissals = player_data[player_data['isWicket'] == True]
         if not dismissals.empty:
             zone_counts = dismissals['fieldingPosition'].value_counts()
@@ -340,12 +352,17 @@ def create_shot_map(df, player_name):
 
 def create_control_matrix(df):
     """Control vs aggression matrix visualization"""
+    # Add shot count for each shot type
+    shot_counts = df.groupby('battingShotTypeId').size().reset_index(name='shot_count')
+    
     analysis = df.groupby('battingShotTypeId').agg({
         'is_controlled': 'mean',
         'runs': 'mean',
-        'control_score': 'mean',
-        'shot_count': 'size'
+        'control_score': 'mean'
     }).reset_index()
+    
+    # Merge with shot counts
+    analysis = pd.merge(analysis, shot_counts, on='battingShotTypeId')
     analysis = analysis[analysis['shot_count'] >= 10]
     
     fig = px.scatter(
@@ -376,7 +393,7 @@ def create_phase_analysis(df):
     phase_data = df.groupby(['match_phase', 'battingShotTypeId']).agg({
         'runs': 'mean',
         'is_controlled': 'mean',
-        'boundary': 'mean'
+        'is_boundary': 'mean'
     }).reset_index()
     
     fig = px.bar(
@@ -391,21 +408,25 @@ def create_phase_analysis(df):
     fig.update_layout(xaxis_tickangle=-45)
     return fig
 
-def create_radar_comparison(players):
+def create_radar_comparison(df, players):
     """Multi-player radar comparison"""
     if len(players) < 2:
         return go.Figure()
     
     radar_data = []
     for player in players:
-        player_data = df[df['batsman'] == player].iloc[0]
-        radar_data.append({
-            'Player': player,
-            'Control Rate': player_data['is_controlled'] * 100,
-            'Avg Runs': player_data['runs'],
-            'Boundary %': player_data['boundary'] * 100,
-            'Control Score': player_data['control_score']
-        })
+        player_data = df[df['batsman'] == player]
+        if not player_data.empty:
+            radar_data.append({
+                'Player': player,
+                'Control Rate': player_data['is_controlled'].mean() * 100,
+                'Avg Runs': player_data['runs'].mean(),
+                'Boundary %': player_data['is_boundary'].mean() * 100,
+                'Control Score': player_data['control_score'].mean()
+            })
+    
+    if not radar_data:
+        return go.Figure()
     
     radar_df = pd.DataFrame(radar_data)
     
@@ -413,14 +434,15 @@ def create_radar_comparison(players):
     categories = ['Control Rate', 'Avg Runs', 'Boundary %', 'Control Score']
     
     for i, player in enumerate(players):
-        values = radar_df[radar_df['Player'] == player][categories].values[0].tolist() + [radar_df[radar_df['Player'] == player][categories].values[0][0]]
-        fig.add_trace(go.Scatterpolar(
-            r=values,
-            theta=categories + [categories[0]],
-            fill='toself',
-            name=player,
-            line_color=px.colors.qualitative.Plotly[i]
-        ))
+        if player in radar_df['Player'].values:
+            values = radar_df[radar_df['Player'] == player][categories].values[0].tolist() + [radar_df[radar_df['Player'] == player][categories].values[0][0]]
+            fig.add_trace(go.Scatterpolar(
+                r=values,
+                theta=categories + [categories[0]],
+                fill='toself',
+                name=player,
+                line_color=px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]
+            ))
     
     fig.update_layout(
         polar=dict(
@@ -550,7 +572,7 @@ def main():
     with tab3:
         st.subheader("Match Phase Performance")
         fig = create_phase_analysis(df)
-        st.plotly.chart(fig)
+        st.plotly_chart(fig)
     
     # Player Cards
     with tab4:
@@ -567,7 +589,7 @@ def main():
                     with col2:
                         st.metric("Avg Runs", f"{player_data['runs'].mean():.2f}")
                     with col3:
-                        st.metric("Boundary %", f"{player_data['boundary'].mean()*100:.1f}%")
+                        st.metric("Boundary %", f"{player_data['is_boundary'].mean()*100:.1f}%")
                     st.progress(player_data['control_score'].mean()/100)
                     st.caption("Control Score (0-100)")
                     
@@ -592,11 +614,10 @@ def main():
     with tab5:
         st.subheader("Radar Comparison")
         if len(selected_players) >= 2:
-            fig = create_radar_comparison(selected_players)
+            fig = create_radar_comparison(df, selected_players)
             st.plotly_chart(fig)
         else:
             st.warning("Select ≥2 players for comparison")
 
 if __name__ == "__main__":
     main()
-
