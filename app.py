@@ -945,12 +945,11 @@ def main():
         else:
             st.warning("Please select at least 2 players from the sidebar for comparison.")
     with tab6:
-    st.header("📉 Bowl-To Strategy: Dismissal Analysis")
-    
-    if selected_players:
-        selected_batter = st.selectbox(
-            "Select Batter for Dismissal Analysis",
-            options=selected_players,
+            st.header("📉 Bowl-To Strategy: Dismissal Analysis")
+            if selected_players:
+               selected_batter = st.selectbox(
+                "Select Batter for Dismissal Analysis",
+                 options=selected_players,
             key="dismissal_batter"
         )
         
@@ -1025,6 +1024,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
