@@ -959,7 +959,7 @@ def main():
                 st.dataframe(summary.sort_values(by='Dismissals', ascending=False), use_container_width=True)
                 
                 # Display charts in columns
-                col1, col2 = st.columns(1)
+                col1 = st.columns(1)
                 
                 with col1:
                     st.subheader("📊 Dismissals by Fielding Zone")
@@ -990,4 +990,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
