@@ -963,26 +963,77 @@ def main():
             st.warning("Please select at least 2 players from the sidebar for comparison.")
     
     with tab6:
-        st.subheader("🔍 Advanced Data Table")
-        
-        # Add download button for filtered data
-        csv = filtered_df.to_csv(index=False)
-        st.download_button(
-            label="📥 Download Filtered Data as CSV",
-            data=csv,
-            file_name=f"cricket_analytics_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
-        )
-        
-        # Display sample of the data
-        st.dataframe(filtered_df.head(1000), use_container_width=True)
-        
-        # Show summary statistics
-        if st.checkbox("Show Summary Statistics"):
-            st.subheader("📈 Summary Statistics")
-            numeric_cols = filtered_df.select_dtypes(include=[np.number]).columns
-            if len(numeric_cols) > 0:
-                st.dataframe(filtered_df[numeric_cols].describe(), use_container_width=True)
+        st.header("📉 Bowl-To Strategy: Dismissal Analysis")
+
+# Filter dismissal data for selected batter
+dismissals = df[(df['batsman'] == selected_batter) & (df['isWicket'] == True)]
+
+if dismissals.empty:
+    st.info("No dismissal data available for this player.")
+else:
+    # Timing Mapping
+    timing_map = {
+        'WellTimed': 'WellTimed',
+        'Undercontrol': 'Controlled',
+        'Missed': 'Missed',
+        'Edge': 'Edged',
+        'NotApplicable': 'Unknown',
+        np.nan: 'Unknown'
+    }
+    dismissals['Timing'] = dismissals['battingConnectionId'].map(timing_map).fillna('Unknown')
+
+    # Summary Table
+    st.subheader("🧠 Dismissal Zones Summary")
+    summary = dismissals.groupby(
+        ['fieldingPosition', 'lineTypeId', 'lengthTypeId', 'bowlingTypeId', 'Timing']
+    ).size().reset_index(name='Dismissals')
+    st.dataframe(summary.sort_values(by='Dismissals', ascending=False), use_container_width=True)
+
+    # Dismissals by fielding position
+    st.subheader("📊 Dismissals by Fielding Zone")
+    zone_counts = dismissals['fieldingPosition'].value_counts().reset_index()
+    zone_counts.columns = ['Fielding Position', 'Dismissals']
+    fig1 = px.bar(
+        zone_counts,
+        x='Fielding Position', y='Dismissals',
+        color='Fielding Position', title='Dismissals by Fielding Position'
+    )
+    st.plotly_chart(fig1, use_container_width=True)
+
+    # Dismissal timing pie
+    st.subheader("🥧 Dismissal Timing Breakdown")
+    fig2 = px.pie(
+        dismissals,
+        names='Timing',
+        title='Dismissal Timing Distribution',
+        hole=0.4
+    )
+    st.plotly_chart(fig2, use_container_width=True)
+
+    # Line vs Length Heatmap
+    st.subheader("🔥 Heatmap: Line vs Length Dismissals")
+    heatmap_data = dismissals.groupby(['lineTypeId', 'lengthTypeId']).size().unstack().fillna(0)
+    fig3 = go.Figure(data=go.Heatmap(
+        z=heatmap_data.values,
+        x=heatmap_data.columns,
+        y=heatmap_data.index,
+        colorscale='Reds',
+        hoverongaps=False
+    ))
+    fig3.update_layout(xaxis_title='Length', yaxis_title='Line')
+    st.plotly_chart(fig3, use_container_width=True)
+
+    # Optional: Simple recommendation logic
+    st.subheader("🧾 Suggested Bowling Plan")
+    top_row = summary.sort_values(by='Dismissals', ascending=False).iloc[0]
+    suggestion = f"""
+    🧲 **Bowling Type**: `{top_row['bowlingTypeId']}`  
+    🎯 **Line**: `{top_row['lineTypeId']}`  
+    📏 **Length**: `{top_row['lengthTypeId']}`  
+    🧲 **Target Zone**: `{top_row['fieldingPosition']}`  
+    ⌛ **Likely Timing**: `{top_row['Timing']}`
+    """
+    st.markdown(suggestion)
 
 # Add information about deployment
 def show_deployment_info():
@@ -991,5 +1042,6 @@ def show_deployment_info():
 
 if __name__ == "__main__":
     main()
+
 
 
