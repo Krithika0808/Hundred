@@ -113,7 +113,7 @@ def load_data_from_github(github_url=None):
                 (1 if x['isBoundary'] else 
                  any(keyword in str(x['commentary']).lower() 
                  for keyword in ['four', 'six', 'boundary'])
-            else 0)
+            else 0
         )
         
         return df
@@ -599,4 +599,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
