@@ -106,15 +106,15 @@ def load_data_from_github(github_url=None):
             'isAirControlled': 'bool'
         })
         
-        # Boundary detection
-        df['is_boundary'] = df.apply(
-            lambda x: 
-                1 if x['runs'] in [4,6] else 
-                (1 if x['isBoundary'] else 
-                 any(keyword in str(x['commentary']).lower() 
-                 for keyword in ['four', 'six', 'boundary'])
-            else 0
-        )
+       # Boundary detection
+df['is_boundary'] = df.apply(
+    lambda x: 1 if x['runs'] in [4, 6] 
+    else 1 if x.get('isBoundary', False) 
+    else 1 if any(keyword in str(x.get('commentary', '')).lower() 
+                  for keyword in ['four', 'six', 'boundary']) 
+    else 0,
+    axis=1
+)
         
         return df
     
@@ -599,3 +599,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
