@@ -110,8 +110,6 @@ def load_data_from_github(github_url=None):
         csv_content = StringIO(response.text)
         df = pd.read_csv(csv_content)
         
-        st.success(f"✅ Data loaded from GitHub! Shape: {df.shape}")
-        
         # Data cleaning and preprocessing
         if df.empty:
             return df
@@ -796,38 +794,6 @@ def main():
     
     # Process the data
     df = calculate_shot_intelligence_metrics(df)
-    
-    # Display dataset overview
-    with st.expander("📊 Dataset Overview"):
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Total Balls", len(df))
-        with col2:
-            st.metric("Unique Players", df['batsman'].nunique() if 'batsman' in df.columns else 0)
-        with col3:
-            unique_matches = df['fixtureId'].nunique() if 'fixtureId' in df.columns else df['matchDate'].nunique() if 'matchDate' in df.columns else 1
-            st.metric("Matches", unique_matches)
-        with col4:
-            st.metric("Total Runs", int(df['runs'].sum()) if 'runs' in df.columns else 0)
-            
-        # Show column information
-        st.write("**Available columns:**", ", ".join(df.columns.tolist()))
-    
-    # Show data quality indicators
-    with st.expander("🔍 Data Quality Check"):
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            missing_angles = df['shotAngle'].isna().sum()
-            st.metric("Missing Shot Angles", missing_angles)
-        with col2:
-            valid_shots = df['battingShotTypeId'].notna().sum() if 'battingShotTypeId' in df.columns else 0
-            st.metric("Valid Shot Types", valid_shots)
-        with col3:
-            boundary_shots = df['is_boundary'].sum()
-            st.metric("Boundary Shots Detected", boundary_shots)
-        with col4:
-            control_data = df['battingConnectionId'].notna().sum()
-            st.metric("Control Data Available", control_data)
     
     # Sidebar filters
     st.sidebar.header("🎯 Analysis Filters")
