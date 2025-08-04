@@ -38,7 +38,7 @@ if df.empty:
 
 # Sidebar filters
 st.sidebar.header("Filters")
-selected_player = st.sidebar.selectbox("Select a player", sorted(df['batter'].dropna().unique()))
+selected_player = st.sidebar.selectbox("Select a player", sorted(df['batsman'].dropna().unique()))
 bowling_types = sorted(df['bowlingType'].dropna().unique())
 selected_bowling_types = st.sidebar.multiselect("Bowling Types", bowling_types, default=bowling_types)
 phases = sorted(df['phase'].dropna().unique())
@@ -102,3 +102,4 @@ if shot_zone_chart:
     st.plotly_chart(shot_zone_chart, use_container_width=True)
 else:
     st.info("Shot Type data not available.")
+
