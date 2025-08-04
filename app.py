@@ -8,6 +8,9 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from datetime import datetime
 import os
+# Add these 2 lines at the VERY TOP of your code
+import requests
+GITHUB_DATA_URL = "https://raw.githubusercontent.com/Krithika0808/Hundred/main/Hundred.csv"
 # Set page config
 st.set_page_config(
     page_title="Women's Cricket Shot Intelligence Matrix",
@@ -93,22 +96,32 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-@st.cache_data
-def load_data(uploaded_file=None, file_path=None):
-    """Load and preprocess cricket data from CSV"""
+# Replace your existing load_data function with this:
+@st.cache_data(ttl=3600)  # 1 hour cache
+def load_data(uploaded_file=None):
+    """Secure data loading: Upload > GitHub > Sample"""
     try:
-        # Try multiple data source options
-        if uploaded_file is not None:
-            df = pd.read_csv(uploaded_file)
-            st.success(f"✅ Data loaded from upload! Shape: {df.shape}")
-        elif file_path and os.path.exists(file_path):
-            df = pd.read_csv(file_path)
-            st.success(f"✅ Data loaded from file path! Shape: {df.shape}")
-        else:
-            # Create sample data for demonstration
-            df = create_sample_data()
-            st.info("📊 Using sample data for demonstration. Upload your CSV file for real analysis!")
+        # 1. User upload (highest priority)
+        if uploaded_file:
+            return pd.read_csv(uploaded_file)
+            
+        # 2. GitHub dataset (primary source)
+        @st.cache_data(ttl=86400)  # 24-hour cache
+        def load_github_data():
+            response = requests.get(
+                GITHUB_DATA_URL,
+                headers={
+                    'User-Agent': 'WomenCricketApp/1.0'
+                },
+                timeout=10
+            )
+            return pd.read_csv(response.content)
+            
+        return load_github_data()
         
+    except Exception:
+        st.warning("🔄 Fallback to sample data (GitHub unavailable)")
+        return create_sample_data()
         # Data cleaning and preprocessing
         if df.empty:
             return df
@@ -795,15 +808,7 @@ def main():
     
     st.markdown('<h1 class="main-header">🏏 Women\'s Cricket Shot Intelligence Matrix</h1>', unsafe_allow_html=True)
     
-    # File upload option
-    st.sidebar.header("📁 Data Source")
-    uploaded_file = st.sidebar.file_uploader("Upload Cricket Data CSV", type=['csv'])
-    
-    # Optional file path input
-    file_path = st.sidebar.text_input(
-        "Or enter file path:",
-        value="C:\\Users\\Krithika\\OneDrive\\Desktop\\Hundred\\Hundred.csv",
-        help="Enter the full path to your CSV file"
+
     )
     
     # Load data
@@ -992,5 +997,22 @@ def main():
         st.subheader("🔍 Advanced Data Table")
         st.dataframe(filtered_df.head(1000), use_container_width=True)
 
+# Add THIS at the VERY BOTTOM of your CSS section
+st.markdown("""
+<style>
+    /* Hide technical details */
+    .stFileUploader > div > div > div > div {
+        visibility: hidden !important;
+    }
+    
+    /* GitHub attribution styling */
+    a[href^="https://github.com"] {
+        color: #1f77b4 !important;
+        text-decoration: none !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 if __name__ == "__main__":
     main()
+
