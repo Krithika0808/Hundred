@@ -470,7 +470,7 @@ def get_player_insights(player_data):
                         weakest_score = attr_control.min()
                         
                         # Only consider it a weakness if control score is below 60
-                        if weakest_score < 30:
+                        if weakest_score < 40:
                             # Format the attribute name for display
                             col_names = {
                                 'lengthTypeId': 'Length',
@@ -991,4 +991,5 @@ def show_deployment_info():
 
 if __name__ == "__main__":
     main()
+
 
