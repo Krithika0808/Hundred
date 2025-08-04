@@ -3,235 +3,146 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import seaborn as sns
 import matplotlib.pyplot as plt
 import requests
-import time
-import os
 import io
 from datetime import datetime
 
-# Constants
-GITHUB_SOURCE = "https://raw.githubusercontent.com/Krithika0808/Hundred/main/Hundred.csv"
-LOCAL_CACHE = "hundred_cache.pkl"
-DATA_RETRY_DELAY = 5
-REQUIRED_COLUMNS = {
-    'batsman', 'runs', 'totalBallNumber', 'shotAngle',
-    'battingShotTypeId', 'battingConnectionId', 'matchDate'
-}
+# Page configuration
+st.set_page_config(
+    page_title="Women's Cricket Shot Intelligence",
+    layout="wide",
+    page_icon="🏏"
+)
 
-# Custom CSS
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: #1f77b4;
-        text-align: center;
-        margin-bottom: 2rem;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-    }
-</style>
-""", unsafe_allow_html=True)
+# App Title
+st.title("📊 Women's Cricket Shot Intelligence – The Hundred")
 
-@st.cache_data(ttl=3600)
-def load_data():
-    """Loads data from GitHub or local fallback"""
-    for attempt in range(3):
-        try:
-            response = requests.get(GITHUB_SOURCE, timeout=10)
-            if response.status_code == 200:
-                df = pd.read_csv(io.StringIO(response.content.decode('utf-8')))
-                if validate_dataframe(df):
-                    return preprocess_data(df)
-        except Exception as e:
-            print(f"Attempt {attempt + 1} failed: {e}")
-            time.sleep(DATA_RETRY_DELAY)
-    
-    if os.path.exists(LOCAL_CACHE):
-        return pd.read_pickle(LOCAL_CACHE)
-    
-    return create_sample_data()
-
-def validate_dataframe(df):
-    return (
-        not df.empty and
-        REQUIRED_COLUMNS.issubset(df.columns)
-    )
-
-def preprocess_data(df):
-    df = df.dropna(subset=['batsman', 'runs', 'totalBallNumber'])
-    df['runs'] = df['runs'].astype(int)
-    df['totalBallNumber'] = df['totalBallNumber'].astype(int)
-    df['shotAngle'] = df['shotAngle'].apply(lambda x: x % 360 if pd.notnull(x) else 0).astype(float)
-    df['is_boundary'] = df['runs'].isin([4, 6])
-    if 'shotMagnitude' not in df.columns:
-        df['shotMagnitude'] = np.random.uniform(100, 200, len(df))
-    df.to_pickle(LOCAL_CACHE)
-    return df
-
-def create_sample_data():
-    np.random.seed(42)
-    players = ['Smriti Mandhana', 'Harmanpreet Kaur', 'Beth Mooney',
-               'Alyssa Healy', 'Meg Lanning', 'Elyse Villani', 'Deepti Jones']
-    shot_types = ['Drive', 'Pull', 'Cut', 'Sweep', 'Flick', 'Hook',
-                  'Reverse Sweep', 'Defensive', 'Cover Drive']
-    connection_types = ['Middled', 'WellTimed', 'Undercontrol',
-                        'MisTimed', 'Missed', 'HitBody', 'TopEdge']
-
-    data = {
-        'batsman': np.random.choice(players, 1000),
-        'battingShotTypeId': np.random.choice(shot_types, 1000),
-        'battingConnectionId': np.random.choice(connection_types, 1000, p=[0.3, 0.25, 0.2, 0.1, 0.05, 0.05, 0.05]),
-        'runs': np.random.choice([0, 1, 2, 3, 4, 6], 1000),
-        'totalBallNumber': np.random.randint(1, 101, 1000),
-        'shotAngle': np.random.uniform(0, 360, 1000),
-        'shotMagnitude': np.random.uniform(100, 200, 1000),
-        'matchDate': pd.date_range(start='2023-01-01', periods=1000, freq='D')
-    }
-    df = pd.DataFrame(data)
-    df['is_boundary'] = df['runs'].isin([4, 6])
-    return df
-
-def calculate_shot_intelligence_metrics(df):
-    control_scores = {
-        'Middled': 3, 'WellTimed': 3, 'Undercontrol': 3,
-        'MisTimed': 2, 'Missed': 1, 'HitBody': 0.5,
-        'TopEdge': 2, 'BatPad': 1, 'BottomEdge': 2,
-        'Gloved': 2, 'HitHelmet': 0, 'HitPad': 0,
-        'InsideEdge': 2, 'LeadingEdge': 2, 'Left': 3
-    }
-
-    df['control_quality_score'] = df['battingConnectionId'].map(control_scores).fillna(1.5)
-
-    angle_bins = [0, 45, 90, 135, 180, 225, 270, 315, 360]
-    angle_labels = ['Long Off', 'Cover', 'Point', 'Third Man',
-                    'Fine Leg', 'Square Leg', 'Mid Wicket', 'Long On']
-    df['angle_zone'] = pd.cut(df['shotAngle'], bins=angle_bins, labels=angle_labels, include_lowest=True)
-
-    df['control_score'] = (
-        df['control_quality_score'] * 33.33 +
-        df['runs'] * 5 +
-        df['is_boundary'].astype(int) * 20 +
-        (df['angle_zone'].isin(['Cover', 'Mid Wicket', 'Long On', 'Long Off']).astype(int) * 10)
-    ).clip(0, 100)
-
-    df['true_shot_efficiency'] = df['runs'] * df['control_quality_score'] / 3
-    df['true_risk_reward'] = np.where(df['control_score'] >= 50, df['runs'] * 1.3, df['runs'] * 0.7)
-
-    return df
-
-def create_shot_angle_heatmap(df, player_name):
-    player_data = df[df['batsman'] == player_name]
-    if player_data.empty:
-        return go.Figure()
-    
-    fig = go.Figure()
-    fig.add_trace(go.Scatterpolar(
-        r=player_data['shotMagnitude'],
-        theta=player_data['shotAngle'],
-        mode='markers',
-        marker=dict(
-            size=player_data['runs'] * 3 + 8,
-            color=player_data['control_score'],
-            colorscale='RdYlGn',
-            showscale=True,
-            colorbar=dict(title="Control Score")
-        ),
-        text=player_data.apply(
-            lambda row: f"Shot: {row.battingShotTypeId}<br>Runs: {row.runs}<br>Score: {row.control_score:.1f}", axis=1),
-        hoverinfo='text'
-    ))
-    fig.update_layout(
-        title=f"{player_name} – Shot Map",
-        polar=dict(
-            radialaxis=dict(range=[0, 200], visible=True),
-            angularaxis=dict(
-                tickvals=[0, 45, 90, 135, 180, 225, 270, 315],
-                ticktext=['Long Off', 'Cover', 'Point', 'Third Man',
-                          'Fine Leg', 'Square Leg', 'Mid Wicket', 'Long On']
-            )
-        ),
-        height=600
-    )
-    return fig
-
-def main():
-    st.set_page_config(
-        page_title="Women's Cricket Shot Intelligence",
-        page_icon="🏏",
-        layout="wide"
-    )
-
-    st.markdown('<h1 class="main-header">🏏 Women\'s Cricket Shot Intelligence Matrix</h1>', unsafe_allow_html=True)
-
-    with st.spinner("Loading data..."):
-        try:
-            df = load_data()
-            df = calculate_shot_intelligence_metrics(df)
-        except Exception as e:
-            st.error(f"Data load failed: {e}")
-            df = create_sample_data()
-            df = calculate_shot_intelligence_metrics(df)
-
-    st.sidebar.header("🎯 Player Selection")
-    players = df['batsman'].unique()
-    selected_players = st.sidebar.multiselect("Choose Players", options=players, default=players[:2])
-
-    tab1, tab2, tab3 = st.tabs(["📍 Shot Map", "📈 Shot Types", "📊 Radar"])
-
-    with tab1:
-        st.subheader("360° Shot Map")
-        for player in selected_players:
-            st.plotly_chart(create_shot_angle_heatmap(df, player), use_container_width=True)
-
-    with tab2:
-        st.subheader("Shot Control vs Aggression")
-        shot_agg = df.groupby('battingShotTypeId').agg(
-            control_score=('control_score', 'mean'),
-            runs=('runs', 'mean'),
-            is_boundary=('is_boundary', 'mean')
-        ).reset_index()
-
-        fig = px.scatter(
-            shot_agg, x='control_score', y='runs',
-            size='is_boundary', color='control_score',
-            hover_name='battingShotTypeId',
-            labels={'control_score': 'Control Score', 'runs': 'Avg Runs', 'is_boundary': 'Boundary %'},
-            title="Shot Type Performance"
-        )
-        st.plotly_chart(fig)
-
-    with tab3:
-        st.subheader("Radar Comparison")
-        if len(selected_players) < 2:
-            st.warning("Please select at least 2 players")
+@st.cache_data
+def load_data(from_github=True):
+    if from_github:
+        url = "https://raw.githubusercontent.com/Krithika0808/Hundred/main/Hundred.csv"
+        response = requests.get(url)
+        if response.status_code == 200:
+            df = pd.read_csv(io.StringIO(response.content.decode('utf-8')))
         else:
-            radar_data = df[df['batsman'].isin(selected_players)].groupby('batsman').agg({
-                'control_score': 'mean',
-                'is_boundary': 'mean',
-                'runs': 'mean',
-                'true_shot_efficiency': 'mean',
-                'true_risk_reward': 'mean'
-            }).rename(columns={
-                'control_score': 'Control',
-                'is_boundary': 'Boundary %',
-                'runs': 'Runs/Shot',
-                'true_shot_efficiency': 'Efficiency',
-                'true_risk_reward': 'Risk-Reward'
-            }).T
+            st.error("Failed to fetch CSV from GitHub")
+            return None
+    else:
+        df = pd.read_csv("Hundred.csv")
+    return df
 
+@st.cache_data
+def preprocess_data(df):
+    df['ballDateTime'] = pd.to_datetime(df['ballDateTime'], errors='coerce')
+    df['is_boundary'] = df['is_boundary'].astype(bool)
+    df['matchDate'] = pd.to_datetime(df['matchDate'], errors='coerce')
+    df['season'] = df['matchDate'].dt.year
+    return df
+
+@st.cache_data
+def calculate_shot_intelligence_metrics(df):
+    df = df.copy()
+    
+    # Sample logic – replace with real values if available
+    df['battingConnectionId'] = df['battingConnectionId'].fillna("Under Control")
+    df['control_quality_score'] = df['battingConnectionId'].map({
+        "WellTimed": 3,
+        "Under Control": 2,
+        "Missed": 0
+    }).fillna(1)
+    
+    df['true_shot_efficiency'] = df['runs'] * df['control_quality_score'] / 3
+
+    # If shotMagnitude not available, simulate for plotting
+    if 'shotMagnitude' not in df.columns:
+        df['shotMagnitude'] = np.random.uniform(100, 220, len(df))
+
+    return df
+
+# Sidebar controls
+with st.sidebar:
+    st.header("Filters")
+    use_github = st.checkbox("Load data from GitHub", value=True)
+    df = load_data(use_github)
+    
+    if df is not None:
+        df = preprocess_data(df)
+        df = calculate_shot_intelligence_metrics(df)
+
+        unique_players = df['batter'].dropna().unique().tolist()
+        selected_players = st.multiselect("Select Players", unique_players, default=unique_players[:2])
+        selected_season = st.selectbox("Select Season", sorted(df['season'].unique(), reverse=True))
+    else:
+        st.stop()
+
+# Main Analysis Section
+if df is not None and selected_players:
+    filtered_df = df[
+        (df['batter'].isin(selected_players)) &
+        (df['season'] == selected_season)
+    ]
+
+    st.subheader(f"Overview for {', '.join(selected_players)} – Season {selected_season}")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        player_stats = (
+            filtered_df.groupby('batter')
+            .agg(
+                Balls=('ballNumber', 'count'),
+                Runs=('runs', 'sum'),
+                SR=('runs', lambda x: round(100 * x.sum() / len(x), 1)),
+                ControlRate=('control_quality_score', lambda x: round(100 * (x >= 2).sum() / len(x), 1)),
+                BoundaryPct=('is_boundary', lambda x: round(100 * x.sum() / len(x), 1))
+            )
+            .reset_index()
+        )
+        st.dataframe(player_stats, use_container_width=True)
+
+    with col2:
+        st.markdown("### Radar Chart – Shot Metrics")
+        if len(selected_players) < 2:
+            st.warning("Select at least two players to compare")
+        else:
+            metrics = ['Runs', 'SR', 'ControlRate', 'BoundaryPct']
+            radar_df = player_stats.set_index('batter')[metrics].T
             fig = go.Figure()
-            for i, player in enumerate(selected_players):
-                if player in radar_data.columns:
-                    fig.add_trace(go.Scatterpolar(
-                        r=radar_data[player].values,
-                        theta=radar_data.index,
-                        fill='toself',
-                        name=player
-                    ))
-            fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 100])))
-            st.plotly_chart(fig)
+            for player in selected_players[:4]:
+                fig.add_trace(go.Scatterpolar(
+                    r=radar_df[player].values,
+                    theta=radar_df.index,
+                    fill='toself',
+                    name=player
+                ))
+            fig.update_layout(polar=dict(radialaxis=dict(visible=True)), showlegend=True)
+            st.plotly_chart(fig, use_container_width=True)
 
-if __name__ == "__main__":
-    main()
+    st.markdown("### Shot Timing Heatmap")
+    heat_df = filtered_df.groupby(['batter', 'battingConnectionId']).size().unstack(fill_value=0)
+    fig, ax = plt.subplots(figsize=(8, 3))
+    sns.heatmap(heat_df, annot=True, fmt='d', cmap="YlGnBu", ax=ax)
+    st.pyplot(fig)
+
+    st.markdown("### Shot Efficiency Polar Plot")
+    polar_df = filtered_df.groupby('batter').agg(
+        ShotMagnitude=('shotMagnitude', 'mean'),
+        ShotEfficiency=('true_shot_efficiency', 'mean')
+    ).reset_index()
+
+    fig = px.scatter_polar(
+        polar_df,
+        r='ShotMagnitude',
+        theta='ShotEfficiency',
+        color='batter',
+        size='ShotEfficiency',
+        symbol='batter',
+        title="Shot Intelligence (Polar)"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+else:
+    st.warning("No players selected or data not loaded properly.")
