@@ -625,7 +625,8 @@ def create_shot_angle_heatmap(df, player_name):
             radialaxis=dict(
                 visible=True,
                 range=[0, player_data['shotMagnitude'].max() * 1.1] if not player_data.empty else [0, 200],
-),
+                title="Shot Distance"
+            ),
             angularaxis=dict(
                 tickmode='array',
                 tickvals=[0, 45, 90, 135, 180, 225, 270, 315],
@@ -785,25 +786,68 @@ def main():
     
     st.markdown('<h1 class="main-header">🏏 Women\'s Cricket Shot Intelligence Matrix</h1>', unsafe_allow_html=True)
     
-    # File upload option
+    # Data source options
     st.sidebar.header("📁 Data Source")
-    uploaded_file = st.sidebar.file_uploader("Upload Cricket Data CSV", type=['csv'])
     
-    # Optional file path input
-    file_path = st.sidebar.text_input(
-        "Or enter file path:",
-        value="C:\\Users\\Krithika\\OneDrive\\Desktop\\Hundred\\Hundred.csv",
-        help="Enter the full path to your CSV file"
+    data_source = st.sidebar.radio(
+        "Choose data source:",
+        ["GitHub Repository", "Upload CSV", "Custom GitHub URL"]
     )
     
-    # Load data
-    df = load_data(uploaded_file, file_path if not uploaded_file else None)
+    df = pd.DataFrame()
+    
+    if data_source == "GitHub Repository":
+        # Use default GitHub URL
+        with st.spinner("Loading data from GitHub repository..."):
+            df = load_data_from_github()
+    
+    elif data_source == "Upload CSV":
+        uploaded_file = st.sidebar.file_uploader("Upload Cricket Data CSV", type=['csv'])
+        if uploaded_file is not None:
+            try:
+                df = pd.read_csv(uploaded_file)
+                st.success(f"✅ Data loaded from upload! Shape: {df.shape}")
+            except Exception as e:
+                st.error(f"❌ Error loading uploaded file: {str(e)}")
+                df = create_sample_data()
+        else:
+            st.info("Please upload a CSV file or use sample data.")
+            df = create_sample_data()
+    
+    elif data_source == "Custom GitHub URL":
+        custom_url = st.sidebar.text_input(
+            "Enter GitHub raw CSV URL:",
+            placeholder="https://raw.githubusercontent.com/user/repo/branch/file.csv"
+        )
+        if custom_url:
+            with st.spinner("Loading data from custom GitHub URL..."):
+                df = load_data_from_github(custom_url)
+        else:
+            st.info("Please enter a GitHub raw CSV URL.")
+            df = create_sample_data()
     
     if df.empty:
-        st.error("⚠️ No data could be loaded. Please upload a CSV file or check your file path.")
-        return
+        st.error("⚠️ No data could be loaded. Using sample data for demonstration.")
+        df = create_sample_data()
     
+    # Process the data
     df = calculate_shot_intelligence_metrics(df)
+    
+    # Display dataset overview
+    with st.expander("📊 Dataset Overview"):
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Balls", len(df))
+        with col2:
+            st.metric("Unique Players", df['batsman'].nunique() if 'batsman' in df.columns else 0)
+        with col3:
+            unique_matches = df['fixtureId'].nunique() if 'fixtureId' in df.columns else df['matchDate'].nunique() if 'matchDate' in df.columns else 1
+            st.metric("Matches", unique_matches)
+        with col4:
+            st.metric("Total Runs", int(df['runs'].sum()) if 'runs' in df.columns else 0)
+            
+        # Show column information
+        st.write("**Available columns:**", ", ".join(df.columns.tolist()))
     
     # Show data quality indicators
     with st.expander("🔍 Data Quality Check"):
@@ -861,7 +905,7 @@ def main():
         ball_range = (1, 100)
     
     # Apply filters
-    filtered_df = df[df['batsman'].isin(selected_players)]
+    filtered_df = df[df['batsman'].isin(selected_players)] if selected_players else df
     
     if selected_shots and 'battingShotTypeId' in df.columns:
         filtered_df = filtered_df[filtered_df['battingShotTypeId'].isin(selected_shots)]
@@ -889,10 +933,14 @@ def main():
         col1, col2 = st.columns([2, 1])
         
         with col1:
-            selected_player = st.selectbox("Select Player for Detailed Analysis", selected_players)
-            if selected_player:
-                fig = create_shot_angle_heatmap(filtered_df, selected_player)
-                st.plotly_chart(fig, use_container_width=True)
+            if selected_players:
+                selected_player = st.selectbox("Select Player for Detailed Analysis", selected_players)
+                if selected_player:
+                    fig = create_shot_angle_heatmap(filtered_df, selected_player)
+                    st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("Please select at least one player from the sidebar.")
+        
         with col2:
             st.markdown("##### 🧠 Interpretation")
             st.markdown("""
@@ -916,71 +964,120 @@ def main():
     with tab4:
         st.subheader("Player Intelligence Cards")
         
-        for player in selected_players:
-            player_data = filtered_df[filtered_df['batsman'] == player]
-            if not player_data.empty:
-                # Basic metrics card
-                st.markdown(f"#### {player}")
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Control Rate", f"{player_data['is_controlled_shot'].mean() * 100:.1f}%")
-                with col2:
-                    st.metric("Avg Runs/Shot", f"{player_data['runs'].mean():.2f}")
-                with col3:
-                    st.metric("Boundary %", f"{player_data['is_boundary'].mean() * 100:.1f}%")
-                st.progress(min(player_data['control_score'].mean() / 100, 1.0))
-                st.caption("Control Score Progress (0-100)")
-                
-                # Player insights card
-                insights = get_player_insights(player_data)
-                if insights:
-                    st.markdown('<div class="insight-card">', unsafe_allow_html=True)
-                    st.markdown("##### 🎯 Player Insights")
+        if selected_players:
+            for player in selected_players:
+                player_data = filtered_df[filtered_df['batsman'] == player]
+                if not player_data.empty:
+                    # Basic metrics card
+                    st.markdown(f"#### {player}")
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Control Rate", f"{player_data['is_controlled_shot'].mean() * 100:.1f}%")
+                    with col2:
+                        st.metric("Avg Runs/Shot", f"{player_data['runs'].mean():.2f}")
+                    with col3:
+                        st.metric("Boundary %", f"{player_data['is_boundary'].mean() * 100:.1f}%")
+                    st.progress(min(player_data['control_score'].mean() / 100, 1.0))
+                    st.caption("Control Score Progress (0-100)")
                     
-                    # Display insights in a grid
-                    insight_cols = st.columns(2)
-                    
-                    with insight_cols[0]:
-                        if 'favorite_shot' in insights:
-                            st.markdown(f'<div class="insight-title">🏏 Favorite Shot</div>', unsafe_allow_html=True)
-                            st.markdown(f'<div class="insight-content">{insights["favorite_shot"]}</div>', unsafe_allow_html=True)
+                    # Player insights card
+                    insights = get_player_insights(player_data)
+                    if insights:
+                        st.markdown('<div class="insight-card">', unsafe_allow_html=True)
+                        st.markdown("##### 🎯 Player Insights")
                         
-                        if 'dismissal_pattern' in insights:
-                            st.markdown(f'<div class="insight-title">⚠️ Dismissal Pattern</div>', unsafe_allow_html=True)
-                            st.markdown(f'<div class="insight-content">{insights["dismissal_pattern"]}</div>', unsafe_allow_html=True)
-                    
-                    with insight_cols[1]:
-                        if 'bowl_to' in insights:
-                            st.markdown(f'<div class="insight-title">🎯 Bowl To</div>', unsafe_allow_html=True)
-                            # Display multiple bowling recommendations
-                            st.markdown('<div class="bowling-recommendation">', unsafe_allow_html=True)
-                            for rec in insights['bowl_to']:
-                                st.markdown(f'<div class="recommendation-item">• {rec}</div>', unsafe_allow_html=True)
+                        # Display insights in a grid
+                        insight_cols = st.columns(2)
+                        
+                        with insight_cols[0]:
+                            if 'favorite_shot' in insights:
+                                st.markdown(f'<div class="insight-title">🏏 Favorite Shot</div>', unsafe_allow_html=True)
+                                st.markdown(f'<div class="insight-content">{insights["favorite_shot"]}</div>', unsafe_allow_html=True)
                             
-                            # Add connection note if available
-                            if 'bowl_to_connection' in insights:
-                                st.markdown(f'<div class="connection-note">Targets dismissals to {insights["bowl_to_connection"]}</div>', unsafe_allow_html=True)
+                            if 'dismissal_pattern' in insights:
+                                st.markdown(f'<div class="insight-title">⚠️ Dismissal Pattern</div>', unsafe_allow_html=True)
+                                st.markdown(f'<div class="insight-content">{insights["dismissal_pattern"]}</div>', unsafe_allow_html=True)
+                        
+                        with insight_cols[1]:
+                            if 'bowl_to' in insights:
+                                st.markdown(f'<div class="insight-title">🎯 Bowl To</div>', unsafe_allow_html=True)
+                                # Display multiple bowling recommendations
+                                st.markdown('<div class="bowling-recommendation">', unsafe_allow_html=True)
+                                for rec in insights['bowl_to']:
+                                    st.markdown(f'<div class="recommendation-item">• {rec}</div>', unsafe_allow_html=True)
+                                
+                                # Add connection note if available
+                                if 'bowl_to_connection' in insights:
+                                    st.markdown(f'<div class="connection-note">Targets dismissals to {insights["bowl_to_connection"]}</div>', unsafe_allow_html=True)
+                                
+                                st.markdown('</div>', unsafe_allow_html=True)
                             
-                            st.markdown('</div>', unsafe_allow_html=True)
+                            if 'strength_area' in insights:
+                                st.markdown(f'<div class="insight-title">💪 Strength Area</div>', unsafe_allow_html=True)
+                                st.markdown(f'<div class="insight-content">{insights["strength_area"]}</div>', unsafe_allow_html=True)
+                            
+                            if 'most_effective' in insights:
+                                st.markdown(f'<div class="insight-title">🚀 Most Effective</div>', unsafe_allow_html=True)
+                                st.markdown(f'<div class="insight-content">{insights["most_effective"]}</div>', unsafe_allow_html=True)
                         
-                        if 'strength_area' in insights:
-                            st.markdown(f'<div class="insight-title">💪 Strength Area</div>', unsafe_allow_html=True)
-                            st.markdown(f'<div class="insight-content">{insights["strength_area"]}</div>', unsafe_allow_html=True)
-                        
-                        if 'most_effective' in insights:
-                            st.markdown(f'<div class="insight-title">🚀 Most Effective</div>', unsafe_allow_html=True)
-                            st.markdown(f'<div class="insight-content">{insights["most_effective"]}</div>', unsafe_allow_html=True)
-                    
-                    st.markdown('</div>', unsafe_allow_html=True)
+                        st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            st.warning("Please select at least one player from the sidebar to view intelligence cards.")
     
     with tab5:
         st.subheader("Radar Comparison of Selected Players")
-        radar_fig = create_player_comparison_radar(filtered_df, selected_players)
-        st.plotly_chart(radar_fig, use_container_width=True)
+        if selected_players and len(selected_players) >= 2:
+            radar_fig = create_player_comparison_radar(filtered_df, selected_players)
+            st.plotly_chart(radar_fig, use_container_width=True)
+        else:
+            st.warning("Please select at least 2 players from the sidebar for comparison.")
     
     with tab6:
         st.subheader("🔍 Advanced Data Table")
+        
+        # Add download button for filtered data
+        csv = filtered_df.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Filtered Data as CSV",
+            data=csv,
+            file_name=f"cricket_analytics_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv"
+        )
+        
+        # Display sample of the data
         st.dataframe(filtered_df.head(1000), use_container_width=True)
+        
+        # Show summary statistics
+        if st.checkbox("Show Summary Statistics"):
+            st.subheader("📈 Summary Statistics")
+            numeric_cols = filtered_df.select_dtypes(include=[np.number]).columns
+            if len(numeric_cols) > 0:
+                st.dataframe(filtered_df[numeric_cols].describe(), use_container_width=True)
+
+# Add information about deployment
+def show_deployment_info():
+    """Show deployment information in sidebar"""
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🚀 Deployment Information")
+    st.sidebar.info("""
+    **For Streamlit Cloud Deployment:**
+    
+    1. Push this code to your GitHub repository
+    2. Create a `requirements.txt` file with:
+       ```
+       streamlit
+       pandas
+       numpy
+       plotly
+       requests
+       ```
+    3. Deploy on [share.streamlit.io](https://share.streamlit.io)
+    4. Connect your GitHub repository
+    5. Select this Python file as the main file
+    
+    **Data Source:** Automatically loads from your GitHub repository
+    """)
 
 if __name__ == "__main__":
+    show_deployment_info()
     main()
