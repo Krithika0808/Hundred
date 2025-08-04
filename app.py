@@ -854,7 +854,6 @@ def main():
         "📊 Match Phase Analysis",
         "🏆 Player Intelligence",
         "📈 Player Comparison",
-        "🔍 Advanced Analytics"
     ])
     
     with tab1:
@@ -961,17 +960,6 @@ def main():
             st.plotly_chart(radar_fig, use_container_width=True)
         else:
             st.warning("Please select at least 2 players from the sidebar for comparison.")
-    
-    with tab6:
-        st.subheader("🔍 Advanced Data Table")
-        
-        # Add download button for filtered data
-        csv = filtered_df.to_csv(index=False)
-        st.download_button(
-            label="📥 Download Filtered Data as CSV",
-            data=csv,
-            file_name=f"cricket_analytics_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
         )
         
         # Display sample of the data
@@ -991,3 +979,4 @@ def show_deployment_info():
 
 if __name__ == "__main__":
     main()
+
