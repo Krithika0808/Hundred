@@ -944,9 +944,9 @@ def main():
             st.plotly_chart(radar_fig, use_container_width=True)
         else:
             st.warning("Please select at least 2 players from the sidebar for comparison.")
-      with tab6:
+    
+    with tab6:
         st.header("📉 Bowl-To Strategy: Dismissal Analysis")
-
         if selected_players:
             selected_batter = st.selectbox(
                 "Select Batter for Dismissal Analysis",
@@ -956,7 +956,6 @@ def main():
 
             # Get dismissal analysis data
             dismissals = df[(df['batsman'] == selected_batter) & (df['isWicket'] == True)]
-
             if dismissals.empty:
                 st.info("No dismissal data available for this player")
             else:
@@ -1025,6 +1024,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
