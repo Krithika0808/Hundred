@@ -715,41 +715,7 @@ def create_dismissal_analysis(df, selected_batter):
     if dismissals.empty:
         return None, None, None, None
     
-    # Timing Mapping
-    timing_map = {
-        'WellTimed': 'WellTimed',
-        'Undercontrol': 'Controlled',
-        'Missed': 'Missed',
-        'Edge': 'Edged',
-        'NotApplicable': 'Unknown',
-        np.nan: 'Unknown'
-    }
-    dismissals['Timing'] = dismissals['battingConnectionId'].map(timing_map).fillna('Unknown')
-    
-    # Summary Table
-    summary = dismissals.groupby(
-        ['fieldingPosition', 'lineTypeId', 'lengthTypeId', 'bowlingTypeId', 'Timing']
-    ).size().reset_index(name='Dismissals') if 'fieldingPosition' in dismissals.columns else pd.DataFrame()
-    
-    # Dismissals by fielding position
-    if 'fieldingPosition' in dismissals.columns:
-        zone_counts = dismissals['fieldingPosition'].value_counts().reset_index()
-        zone_counts.columns = ['Fielding Position', 'Dismissals']
-        fig1 = px.bar(
-            zone_counts,
-            x='Fielding Position', y='Dismissals',
-            color='Fielding Position', title='Dismissals by Fielding Position'
-        )
-    else:
-        fig1 = go.Figure()
-    
-    # Dismissal timing pie
-    fig2 = px.pie(
-        dismissals,
-        names='Timing',
-        title='Dismissal Timing Distribution',
-        hole=0.4
-    )
+)
     
     # Line vs Length Heatmap
     if 'lineTypeId' in dismissals.columns and 'lengthTypeId' in dismissals.columns:
@@ -1022,6 +988,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
