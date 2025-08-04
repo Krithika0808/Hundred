@@ -130,7 +130,7 @@ def main():
         "Select Players",
         options=available_players,
         default=list(available_players)[:min(5, len(available_players))]
-    
+    )
     # Shot types filter
     available_shots = df['battingShotTypeId'].unique() if 'battingShotTypeId' in df.columns else []
     if len(available_shots) > 0:
@@ -208,3 +208,4 @@ def main():
     
 if __name__ == "__main__":
     main()
+
