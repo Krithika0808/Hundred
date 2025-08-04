@@ -786,45 +786,9 @@ def main():
     
     st.markdown('<h1 class="main-header">🏏 Women\'s Cricket Shot Intelligence Matrix</h1>', unsafe_allow_html=True)
     
-    # Data source options
-    st.sidebar.header("📁 Data Source")
-    
-    data_source = st.sidebar.radio(
-        "Choose data source:",
-        ["GitHub Repository", "Upload CSV", "Custom GitHub URL"]
-    )
-    
-    df = pd.DataFrame()
-    
-    if data_source == "GitHub Repository":
-        # Use default GitHub URL
-        with st.spinner("Loading data from GitHub repository..."):
-            df = load_data_from_github()
-    
-    elif data_source == "Upload CSV":
-        uploaded_file = st.sidebar.file_uploader("Upload Cricket Data CSV", type=['csv'])
-        if uploaded_file is not None:
-            try:
-                df = pd.read_csv(uploaded_file)
-                st.success(f"✅ Data loaded from upload! Shape: {df.shape}")
-            except Exception as e:
-                st.error(f"❌ Error loading uploaded file: {str(e)}")
-                df = create_sample_data()
-        else:
-            st.info("Please upload a CSV file or use sample data.")
-            df = create_sample_data()
-    
-    elif data_source == "Custom GitHub URL":
-        custom_url = st.sidebar.text_input(
-            "Enter GitHub raw CSV URL:",
-            placeholder="https://raw.githubusercontent.com/user/repo/branch/file.csv"
-        )
-        if custom_url:
-            with st.spinner("Loading data from custom GitHub URL..."):
-                df = load_data_from_github(custom_url)
-        else:
-            st.info("Please enter a GitHub raw CSV URL.")
-            df = create_sample_data()
+    # Load data automatically from GitHub repository
+    with st.spinner("Loading data from GitHub repository..."):
+        df = load_data_from_github()
     
     if df.empty:
         st.error("⚠️ No data could be loaded. Using sample data for demonstration.")
@@ -1057,27 +1021,7 @@ def main():
 # Add information about deployment
 def show_deployment_info():
     """Show deployment information in sidebar"""
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🚀 Deployment Information")
-    st.sidebar.info("""
-    **For Streamlit Cloud Deployment:**
-    
-    1. Push this code to your GitHub repository
-    2. Create a `requirements.txt` file with:
-       ```
-       streamlit
-       pandas
-       numpy
-       plotly
-       requests
-       ```
-    3. Deploy on [share.streamlit.io](https://share.streamlit.io)
-    4. Connect your GitHub repository
-    5. Select this Python file as the main file
-    
-    **Data Source:** Automatically loads from your GitHub repository
-    """)
+    pass  # Removed deployment info
 
 if __name__ == "__main__":
-    show_deployment_info()
     main()
