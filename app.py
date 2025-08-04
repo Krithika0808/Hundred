@@ -807,9 +807,7 @@ def main():
     """Main Streamlit app"""
     
     st.markdown('<h1 class="main-header">🏏 Women\'s Cricket Shot Intelligence Matrix</h1>', unsafe_allow_html=True)
-    
-
-    )
+     )
     
     # Load data
     df = load_data(uploaded_file, file_path if not uploaded_file else None)
@@ -1015,4 +1013,5 @@ st.markdown("""
 
 if __name__ == "__main__":
     main()
+
 
