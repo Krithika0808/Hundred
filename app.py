@@ -848,122 +848,124 @@ def main():
         return
     
     # Main dashboard tabs
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "🎯 Shot Placement", 
-        "⚡ Control vs Aggression", 
-        "📊 Match Phase Analysis",
-        "🏆 Player Intelligence",
-        "📈 Player Comparison",
-        "🔍 Advanced Analytics"
-    ])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "🎯 Shot Placement", 
+    "⚡ Control vs Aggression", 
+    "📊 Match Phase Analysis",
+    "🏆 Player Intelligence",
+    "📈 Player Comparison",
+    "🔍 Advanced Analytics"
+])
+
+# TAB 1 – Shot Placement
+with tab1:
+    st.subheader("360° Shot Placement Intelligence")
     
-    with tab1:
-        st.subheader("360° Shot Placement Intelligence")
-        
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            if selected_players:
-                selected_player = st.selectbox("Select Player for Detailed Analysis", selected_players)
-                if selected_player:
-                    fig = create_shot_angle_heatmap(filtered_df, selected_player)
-                    st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.warning("Please select at least one player from the sidebar.")
-        
-        with col2:
-            st.markdown("##### 🧠 Interpretation")
-            st.markdown("""
-                - **Green markers** indicate excellent control (80-100).
-                - **Orange markers** indicate moderate control (50-79).
-                - **Red markers** indicate poor control (0-49).
-                - **Marker size** increases with runs scored.
-                - Hover to see shot type, runs, connection, and control score.
-            """)
+    col1, col2 = st.columns([2, 1])
     
-    with tab2:
-        st.subheader("Control vs Aggression Matrix")
-        fig = create_control_vs_aggression_chart(filtered_df)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with tab3:
-        st.subheader("Match Phase Shot Analysis")
-        fig = create_match_phase_analysis(filtered_df)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with tab4:
-        st.subheader("Player Intelligence Cards")
-        
+    with col1:
         if selected_players:
-            for player in selected_players:
-                player_data = filtered_df[filtered_df['batsman'] == player]
-                if not player_data.empty:
-                    # Basic metrics card
-                    st.markdown(f"#### {player}")
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Control Rate", f"{player_data['is_controlled_shot'].mean() * 100:.1f}%")
-                    with col2:
-                        st.metric("Avg Runs/Shot", f"{player_data['runs'].mean():.2f}")
-                    with col3:
-                        st.metric("Boundary %", f"{player_data['is_boundary'].mean() * 100:.1f}%")
-                    st.progress(min(player_data['control_score'].mean() / 100, 1.0))
-                    st.caption("Control Score Progress (0-100)")
+            selected_player = st.selectbox("Select Player for Detailed Analysis", selected_players)
+            if selected_player:
+                fig = create_shot_angle_heatmap(filtered_df, selected_player)
+                st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("Please select at least one player from the sidebar.")
+    
+    with col2:
+        st.markdown("##### 🧠 Interpretation")
+        st.markdown("""
+            - **Green markers** indicate excellent control (80-100).
+            - **Orange markers** indicate moderate control (50-79).
+            - **Red markers** indicate poor control (0-49).
+            - **Marker size** increases with runs scored.
+            - Hover to see shot type, runs, connection, and control score.
+        """)
+
+# TAB 2 – Control vs Aggression
+with tab2:
+    st.subheader("Control vs Aggression Matrix")
+    fig = create_control_vs_aggression_chart(filtered_df)
+    st.plotly_chart(fig, use_container_width=True)
+
+# TAB 3 – Match Phase Analysis
+with tab3:
+    st.subheader("Match Phase Shot Analysis")
+    fig = create_match_phase_analysis(filtered_df)
+    st.plotly_chart(fig, use_container_width=True)
+
+# TAB 4 – Player Intelligence Cards
+with tab4:
+    st.subheader("Player Intelligence Cards")
+    
+    if selected_players:
+        for player in selected_players:
+            player_data = filtered_df[filtered_df['batsman'] == player]
+            if not player_data.empty:
+                # Basic metrics card
+                st.markdown(f"#### {player}")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Control Rate", f"{player_data['is_controlled_shot'].mean() * 100:.1f}%")
+                with col2:
+                    st.metric("Avg Runs/Shot", f"{player_data['runs'].mean():.2f}")
+                with col3:
+                    st.metric("Boundary %", f"{player_data['is_boundary'].mean() * 100:.1f}%")
+                st.progress(min(player_data['control_score'].mean() / 100, 1.0))
+                st.caption("Control Score Progress (0-100)")
+                
+                # Player insights card
+                insights = get_player_insights(player_data)
+                if insights:
+                    st.markdown('<div class="insight-card">', unsafe_allow_html=True)
+                    st.markdown("##### 🎯 Player Insights")
                     
-                    # Player insights card
-                    insights = get_player_insights(player_data)
-                    if insights:
-                        st.markdown('<div class="insight-card">', unsafe_allow_html=True)
-                        st.markdown("##### 🎯 Player Insights")
+                    # Display insights in a grid
+                    insight_cols = st.columns(2)
+                    
+                    with insight_cols[0]:
+                        if 'favorite_shot' in insights:
+                            st.markdown(f'<div class="insight-title">🏏 Favorite Shot</div>', unsafe_allow_html=True)
+                            st.markdown(f'<div class="insight-content">{insights["favorite_shot"]}</div>', unsafe_allow_html=True)
                         
-                        # Display insights in a grid
-                        insight_cols = st.columns(2)
+                        if 'dismissal_pattern' in insights:
+                            st.markdown(f'<div class="insight-title">⚠️ Dismissal Pattern</div>', unsafe_allow_html=True)
+                            st.markdown(f'<div class="insight-content">{insights["dismissal_pattern"]}</div>', unsafe_allow_html=True)
+                    
+                    with insight_cols[1]:
+                        if 'bowl_to' in insights:
+                            st.markdown(f'<div class="insight-title">🎯 Bowl To</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="bowling-recommendation">', unsafe_allow_html=True)
+                            for rec in insights['bowl_to']:
+                                st.markdown(f'<div class="recommendation-item">• {rec}</div>', unsafe_allow_html=True)
+                            if 'bowl_to_connection' in insights:
+                                st.markdown(f'<div class="connection-note">Targets dismissals to {insights["bowl_to_connection"]}</div>', unsafe_allow_html=True)
+                            st.markdown('</div>', unsafe_allow_html=True)
                         
-                        with insight_cols[0]:
-                            if 'favorite_shot' in insights:
-                                st.markdown(f'<div class="insight-title">🏏 Favorite Shot</div>', unsafe_allow_html=True)
-                                st.markdown(f'<div class="insight-content">{insights["favorite_shot"]}</div>', unsafe_allow_html=True)
-                            
-                            if 'dismissal_pattern' in insights:
-                                st.markdown(f'<div class="insight-title">⚠️ Dismissal Pattern</div>', unsafe_allow_html=True)
-                                st.markdown(f'<div class="insight-content">{insights["dismissal_pattern"]}</div>', unsafe_allow_html=True)
+                        if 'strength_area' in insights:
+                            st.markdown(f'<div class="insight-title">💪 Strength Area</div>', unsafe_allow_html=True)
+                            st.markdown(f'<div class="insight-content">{insights["strength_area"]}</div>', unsafe_allow_html=True)
                         
-                        with insight_cols[1]:
-                            if 'bowl_to' in insights:
-                                st.markdown(f'<div class="insight-title">🎯 Bowl To</div>', unsafe_allow_html=True)
-                                # Display multiple bowling recommendations
-                                st.markdown('<div class="bowling-recommendation">', unsafe_allow_html=True)
-                                for rec in insights['bowl_to']:
-                                    st.markdown(f'<div class="recommendation-item">• {rec}</div>', unsafe_allow_html=True)
-                                
-                                # Add connection note if available
-                                if 'bowl_to_connection' in insights:
-                                    st.markdown(f'<div class="connection-note">Targets dismissals to {insights["bowl_to_connection"]}</div>', unsafe_allow_html=True)
-                                
-                                st.markdown('</div>', unsafe_allow_html=True)
-                            
-                            if 'strength_area' in insights:
-                                st.markdown(f'<div class="insight-title">💪 Strength Area</div>', unsafe_allow_html=True)
-                                st.markdown(f'<div class="insight-content">{insights["strength_area"]}</div>', unsafe_allow_html=True)
-                            
-                            if 'most_effective' in insights:
-                                st.markdown(f'<div class="insight-title">🚀 Most Effective</div>', unsafe_allow_html=True)
-                                st.markdown(f'<div class="insight-content">{insights["most_effective"]}</div>', unsafe_allow_html=True)
-                        
-                        st.markdown('</div>', unsafe_allow_html=True)
-        else:
-            st.warning("Please select at least one player from the sidebar to view intelligence cards.")
-    
-    with tab5:
-        st.subheader("Radar Comparison of Selected Players")
-        if selected_players and len(selected_players) >= 2:
-            radar_fig = create_player_comparison_radar(filtered_df, selected_players)
-            st.plotly_chart(radar_fig, use_container_width=True)
-        else:
-            st.warning("Please select at least 2 players from the sidebar for comparison.")
-    
-    with tab6:
-        st.subheader("🧠 False Shot Inducers – Bowlers")
+                        if 'most_effective' in insights:
+                            st.markdown(f'<div class="insight-title">🚀 Most Effective</div>', unsafe_allow_html=True)
+                            st.markdown(f'<div class="insight-content">{insights["most_effective"]}</div>', unsafe_allow_html=True)
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
+    else:
+        st.warning("Please select at least one player from the sidebar to view intelligence cards.")
+
+# TAB 5 – Player Comparison Radar
+with tab5:
+    st.subheader("Radar Comparison of Selected Players")
+    if selected_players and len(selected_players) >= 2:
+        radar_fig = create_player_comparison_radar(filtered_df, selected_players)
+        st.plotly_chart(radar_fig, use_container_width=True)
+    else:
+        st.warning("Please select at least 2 players from the sidebar for comparison.")
+
+# TAB 6 – False Shot Inducers
+with tab6:
+    st.subheader("🧠 False Shot Inducers – Bowlers")
     st.markdown("""
     This chart shows which bowlers consistently induce mistimed or uncontrolled shots,
     based on `battingConnectionId` classification.
@@ -979,9 +981,9 @@ def main():
             'edge', 'insideedge', 'topedge', 'leadingedge', 'bottomedge',
             'gloved', 'batpad', 'outsideedge', 'thickedge'
         ]
-        if val in [c.lower() for c in controlled]:
+        if val in controlled:
             return 0
-        elif val in [e.lower() for e in edges]:
+        elif val in edges:
             return 0.5
         else:
             return 1
@@ -1002,6 +1004,7 @@ def main():
     st.dataframe(bowler_false_shot.head(20), use_container_width=True)
     st.markdown("🔍 **False Shot Rate** = Average uncontrolled/mistimed shot score per ball bowled.")
 
+
     
 
 # Add information about deployment
@@ -1011,3 +1014,4 @@ def show_deployment_info():
 
 if __name__ == "__main__":
     main()
+
