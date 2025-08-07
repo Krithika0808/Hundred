@@ -969,8 +969,8 @@ def main():
         based on battingConnectionId classification.
         """)
 
-     # Define false shot score
-     def false_shot_score(battingConnectionId):
+ # Define false shot score
+ def false_shot_score(battingConnectionId):
         if pd.isna(battingConnectionId):
             return None
         val = str(battingConnectionId).strip().lower()
@@ -1022,6 +1022,7 @@ def show_deployment_info():
 
 if __name__ == "__main__":
     main()
+
 
 
 
