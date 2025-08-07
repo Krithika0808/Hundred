@@ -963,7 +963,7 @@ def main():
             st.warning("Please select at least 2 players from the sidebar for comparison.")
           
     with tab6:
-    st.header("🧠 False Shot Inducers – Bowlers")
+        st.header("🧠 False Shot Inducers – Bowlers")
 
     st.markdown("""
     This chart shows which bowlers consistently induce mistimed or uncontrolled shots,
@@ -1011,6 +1011,7 @@ def show_deployment_info():
 
 if __name__ == "__main__":
     main()
+
 
 
 
