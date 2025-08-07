@@ -100,7 +100,7 @@ def load_data_from_github(github_url=None):
     try:
         # Default GitHub URL for your repository
         if github_url is None:
-            github_url = "https://raw.githubusercontent.com/Krithika0808/Hundred/main/Hundred.csv"
+            github_url = "https://raw.githubusercontent.com/Krithika0808/Hundred/main/hundred.csv"
         
         # Fetch data from GitHub
         response = requests.get(github_url)
@@ -968,6 +968,7 @@ def show_deployment_info():
 
 if __name__ == "__main__":
     main()
+
 
 
 
