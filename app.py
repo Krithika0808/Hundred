@@ -822,120 +822,136 @@ def create_player_comparison_radar(df, selected_players):
 
 def create_bowling_effectiveness_chart(df):
     """Create bowling effectiveness analysis"""
-    if 'bowler' not in df.columns or 'false_shot_score' not in df.columns:
-        return go.Figure()
+    try:
+        if 'bowler' not in df.columns or 'false_shot_score' not in df.columns:
+            return None
+        
+        # Calculate bowler effectiveness metrics
+        bowler_stats = df.groupby('bowler').agg({
+            'false_shot_score': ['sum', 'mean'],
+            'totalBallNumber': 'count',
+            'runs': ['sum', 'mean'],
+            'is_boundary': 'sum'
+        }).round(2)
+        
+        bowler_stats.columns = ['Total False Shots', 'Avg False Shot Rate', 'Balls Bowled', 
+                               'Total Runs', 'Avg Runs/Ball', 'Boundaries Conceded']
+        
+        # Filter bowlers with at least 10 balls (reduced threshold)
+        bowler_stats = bowler_stats[bowler_stats['Balls Bowled'] >= 10].reset_index()
+        
+        if bowler_stats.empty:
+            return None
+        
+        # Calculate economy rate
+        bowler_stats['Economy Rate'] = (bowler_stats['Total Runs'] / bowler_stats['Balls Bowled']) * 6
+        
+        # Calculate false shot rate per ball
+        bowler_stats['False Shot Rate/Ball'] = bowler_stats['Total False Shots'] / bowler_stats['Balls Bowled']
+        
+        fig = px.scatter(
+            bowler_stats,
+            x='Economy Rate',
+            y='False Shot Rate/Ball',
+            size='Balls Bowled',
+            color='Avg False Shot Rate',
+            hover_name='bowler',
+            title='Bowler Effectiveness: Economy vs False Shot Induction',
+            labels={
+                'Economy Rate': 'Economy Rate (Runs per Over)',
+                'False Shot Rate/Ball': 'False Shots per Ball',
+                'Avg False Shot Rate': 'Average False Shot Score'
+            },
+            color_continuous_scale='RdYlGn_r'
+        )
+        
+        fig.update_layout(height=500)
+        return fig
     
-    # Calculate bowler effectiveness metrics
-    bowler_stats = df.groupby('bowler').agg({
-        'false_shot_score': ['sum', 'mean'],
-        'totalBallNumber': 'count',
-        'runs': ['sum', 'mean'],
-        'is_boundary': 'sum',
-        'isWicket': 'sum' if 'isWicket' in df.columns else 'count'
-    }).round(2)
-    
-    bowler_stats.columns = ['Total False Shots', 'Avg False Shot Rate', 'Balls Bowled', 
-                           'Total Runs', 'Avg Runs/Ball', 'Boundaries Conceded', 'Wickets']
-    
-    # Filter bowlers with at least 20 balls
-    bowler_stats = bowler_stats[bowler_stats['Balls Bowled'] >= 20].reset_index()
-    
-    # Calculate economy rate
-    bowler_stats['Economy Rate'] = (bowler_stats['Total Runs'] / bowler_stats['Balls Bowled']) * 6
-    
-    # Calculate false shot rate per ball
-    bowler_stats['False Shot Rate/Ball'] = bowler_stats['Total False Shots'] / bowler_stats['Balls Bowled']
-    
-    if bowler_stats.empty:
-        return go.Figure()
-    
-    fig = px.scatter(
-        bowler_stats,
-        x='Economy Rate',
-        y='False Shot Rate/Ball',
-        size='Balls Bowled',
-        color='Avg False Shot Rate',
-        text='bowler',
-        title='Bowler Effectiveness: Economy vs False Shot Induction',
-        labels={
-            'Economy Rate': 'Economy Rate (Runs per Over)',
-            'False Shot Rate/Ball': 'False Shots per Ball',
-            'Avg False Shot Rate': 'Average False Shot Score'
-        },
-        color_continuous_scale='RdYlGn_r'  # Reverse scale - higher false shot rate is better for bowlers
-    )
-    
-    fig.update_traces(textposition="top center")
-    fig.update_layout(height=600)
-    
-    return fig
+    except Exception as e:
+        st.error(f"Error creating bowling chart: {e}")
+        return None
 
 def create_pressure_performance_analysis(df):
     """Analyze performance under pressure situations"""
-    if 'totalBallNumber' not in df.columns:
-        return go.Figure()
+    try:
+        if 'totalBallNumber' not in df.columns:
+            return None
+        
+        # Define pressure situations
+        df_copy = df.copy()
+        df_copy['pressure_situation'] = 'Normal'
+        df_copy.loc[df_copy['totalBallNumber'] >= 76, 'pressure_situation'] = 'Death Overs'
+        df_copy.loc[df_copy['totalBallNumber'] <= 25, 'pressure_situation'] = 'Powerplay'
+        
+        pressure_stats = df_copy.groupby(['batsman', 'pressure_situation']).agg({
+            'runs': 'mean',
+            'control_score': 'mean',
+            'is_boundary': 'mean',
+            'false_shot_score': 'mean'
+        }).reset_index()
+        
+        if pressure_stats.empty:
+            return None
+        
+        fig = px.bar(
+            pressure_stats,
+            x='batsman',
+            y='control_score',
+            color='pressure_situation',
+            barmode='group',
+            title='Pressure Performance: Control Score by Match Situation',
+            labels={
+                'control_score': 'Average Control Score',
+                'batsman': 'Batsman',
+                'pressure_situation': 'Match Situation'
+            },
+            height=500
+        )
+        
+        fig.update_layout(xaxis_tickangle=-45)
+        return fig
     
-    # Define pressure situations
-    df['pressure_situation'] = 'Normal'
-    df.loc[df['totalBallNumber'] >= 76, 'pressure_situation'] = 'Death Overs'
-    df.loc[df['totalBallNumber'] <= 25, 'pressure_situation'] = 'Powerplay'
-    
-    pressure_stats = df.groupby(['batsman', 'pressure_situation']).agg({
-        'runs': 'mean',
-        'control_score': 'mean',
-        'is_boundary': 'mean',
-        'false_shot_score': 'mean'
-    }).reset_index()
-    
-    if pressure_stats.empty:
-        return go.Figure()
-    
-    fig = px.bar(
-        pressure_stats,
-        x='batsman',
-        y='control_score',
-        color='pressure_situation',
-        barmode='group',
-        title='Pressure Performance: Control Score by Match Situation',
-        labels={
-            'control_score': 'Average Control Score',
-            'batsman': 'Batsman',
-            'pressure_situation': 'Match Situation'
-        },
-        height=500
-    )
-    
-    fig.update_layout(xaxis_tickangle=-45)
-    
-    return fig
+    except Exception as e:
+        st.error(f"Error creating pressure analysis: {e}")
+        return None
 
 def create_wicket_probability_heatmap(df):
     """Create wicket probability heatmap based on shot zones and connections"""
-    if 'angle_zone' not in df.columns or 'battingConnectionId' not in df.columns:
-        return go.Figure()
+    try:
+        if 'angle_zone' not in df.columns or 'battingConnectionId' not in df.columns:
+            return None
+        
+        # Create risk probability matrix using false_shot_score
+        risk_data = df.groupby(['angle_zone', 'battingConnectionId']).agg({
+            'false_shot_score': 'mean'
+        }).reset_index()
+        
+        if risk_data.empty:
+            return None
+        
+        # Pivot for heatmap
+        heatmap_data = risk_data.pivot(index='battingConnectionId', 
+                                     columns='angle_zone', 
+                                     values='false_shot_score')
+        
+        # Fill NaN with 0
+        heatmap_data = heatmap_data.fillna(0)
+        
+        fig = px.imshow(
+            heatmap_data,
+            title='Risk Heatmap: False Shot Score by Zone and Connection',
+            labels={'x': 'Shot Zone', 'y': 'Connection Type', 'color': 'False Shot Score'},
+            color_continuous_scale='Reds',
+            aspect='auto'
+        )
+        
+        fig.update_layout(height=500)
+        return fig
     
-    # Create wicket probability matrix
-    wicket_prob = df.groupby(['angle_zone', 'battingConnectionId']).agg({
-        'isWicket': 'mean' if 'isWicket' in df.columns else lambda x: 0,
-        'false_shot_score': 'mean'
-    }).reset_index()
-    
-    if wicket_prob.empty:
-        return go.Figure()
-    
-    # Pivot for heatmap
-    heatmap_data = wicket_prob.pivot(index='battingConnectionId', 
-                                   columns='angle_zone', 
-                                   values='false_shot_score')
-    
-    fig = px.imshow(
-        heatmap_data,
-        title='Risk Heatmap: False Shot Score by Zone and Connection',
-        labels={'x': 'Shot Zone', 'y': 'Connection Type', 'color': 'False Shot Score'},
-        color_continuous_scale='Reds'
-    )
-    
-    return fig
+    except Exception as e:
+        st.error(f"Error creating risk heatmap: {e}")
+        return None
 
 def main():
     """Main Streamlit app"""
@@ -1119,122 +1135,198 @@ def main():
             st.markdown("##### 🎳 Bowler Effectiveness Matrix")
             st.markdown("Analyzing bowlers based on their ability to induce false shots while maintaining economy")
             
-            bowling_fig = create_bowling_effectiveness_chart(filtered_df)
-            if bowling_fig.data:
-                st.plotly_chart(bowling_fig, use_container_width=True)
-            else:
-                st.warning("Not enough bowling data to create effectiveness chart")
+            try:
+                bowling_fig = create_bowling_effectiveness_chart(filtered_df)
+                if bowling_fig is not None:
+                    st.plotly_chart(bowling_fig, use_container_width=True)
+                else:
+                    st.info("📊 Not enough bowling data to create effectiveness chart (need at least 10 balls per bowler)")
+                
+                # Top bowlers table
+                if 'bowler' in filtered_df.columns and 'false_shot_score' in filtered_df.columns:
+                    st.markdown("##### 🏆 Top False Shot Inducers")
+                    
+                    bowler_summary = filtered_df.groupby('bowler').agg({
+                        'false_shot_score': ['sum', 'mean'],
+                        'totalBallNumber': 'count',
+                        'runs': 'sum'
+                    }).round(2)
+                    
+                    bowler_summary.columns = ['Total False Shots', 'Avg False Shot Score', 'Balls Bowled', 'Runs Conceded']
+                    bowler_summary = bowler_summary[bowler_summary['Balls Bowled'] >= 5]  # Lower threshold
+                    
+                    if not bowler_summary.empty:
+                        bowler_summary['False Shot Rate'] = bowler_summary['Total False Shots'] / bowler_summary['Balls Bowled']
+                        bowler_summary = bowler_summary.sort_values('False Shot Rate', ascending=False)
+                        st.dataframe(bowler_summary.head(10), use_container_width=True)
+                    else:
+                        st.info("No bowlers with sufficient data (minimum 5 balls)")
+                else:
+                    st.info("Bowler data not available in current selection")
             
-            # Top bowlers table
-            if 'bowler' in filtered_df.columns:
-                st.markdown("##### 🏆 Top False Shot Inducers")
-                bowler_summary = filtered_df.groupby('bowler').agg({
-                    'false_shot_score': ['sum', 'mean'],
-                    'totalBallNumber': 'count',
-                    'runs': 'sum'
-                }).round(2)
-                
-                bowler_summary.columns = ['Total False Shots', 'Avg False Shot Score', 'Balls Bowled', 'Runs Conceded']
-                bowler_summary = bowler_summary[bowler_summary['Balls Bowled'] >= 10]
-                bowler_summary['False Shot Rate'] = bowler_summary['Total False Shots'] / bowler_summary['Balls Bowled']
-                bowler_summary = bowler_summary.sort_values('False Shot Rate', ascending=False)
-                
-                st.dataframe(bowler_summary.head(10), use_container_width=True)
+            except Exception as e:
+                st.error(f"Error in bowling analysis: {e}")
         
         with adv_tab2:
             st.markdown("##### ⚡ Performance Under Pressure")
             st.markdown("Comparing player performance across different match phases")
             
-            pressure_fig = create_pressure_performance_analysis(filtered_df)
-            if pressure_fig.data:
-                st.plotly_chart(pressure_fig, use_container_width=True)
-            else:
-                st.warning("Not enough data to create pressure analysis")
+            try:
+                pressure_fig = create_pressure_performance_analysis(filtered_df)
+                if pressure_fig is not None:
+                    st.plotly_chart(pressure_fig, use_container_width=True)
+                else:
+                    st.info("📊 Not enough data to create pressure analysis")
+                
+                # Pressure statistics table
+                if 'totalBallNumber' in filtered_df.columns and selected_players:
+                    st.markdown("##### 📈 Pressure Statistics")
+                    
+                    df_temp = filtered_df.copy()
+                    df_temp['pressure_phase'] = 'Normal'
+                    df_temp.loc[df_temp['totalBallNumber'] >= 76, 'pressure_phase'] = 'Death Overs'
+                    df_temp.loc[df_temp['totalBallNumber'] <= 25, 'pressure_phase'] = 'Powerplay'
+                    
+                    pressure_stats = df_temp.groupby(['batsman', 'pressure_phase']).agg({
+                        'control_score': 'mean',
+                        'runs': 'mean',
+                        'is_boundary': 'mean'
+                    }).round(2).reset_index()
+                    
+                    if not pressure_stats.empty:
+                        st.dataframe(pressure_stats, use_container_width=True)
+                    else:
+                        st.info("No pressure statistics available for selected players")
+                else:
+                    st.info("Please select players to view pressure statistics")
             
-            # Pressure statistics
-            if 'totalBallNumber' in filtered_df.columns and selected_players:
-                st.markdown("##### 📈 Pressure Statistics")
-                
-                filtered_df['pressure_phase'] = 'Normal'
-                filtered_df.loc[filtered_df['totalBallNumber'] >= 76, 'pressure_phase'] = 'Death Overs'
-                filtered_df.loc[filtered_df['totalBallNumber'] <= 25, 'pressure_phase'] = 'Powerplay'
-                
-                pressure_stats = filtered_df.groupby(['batsman', 'pressure_phase']).agg({
-                    'control_score': 'mean',
-                    'runs': 'mean',
-                    'is_boundary': 'mean'
-                }).round(2).reset_index()
-                
-                st.dataframe(pressure_stats, use_container_width=True)
+            except Exception as e:
+                st.error(f"Error in pressure analysis: {e}")
         
         with adv_tab3:
             st.markdown("##### 🎯 Risk Assessment Heatmap")
             st.markdown("Visualizing risk levels across different shot zones and connection types")
             
-            risk_fig = create_wicket_probability_heatmap(filtered_df)
-            if risk_fig.data:
-                st.plotly_chart(risk_fig, use_container_width=True)
-            else:
-                st.warning("Not enough data to create risk heatmap")
+            try:
+                risk_fig = create_wicket_probability_heatmap(filtered_df)
+                if risk_fig is not None:
+                    st.plotly_chart(risk_fig, use_container_width=True)
+                else:
+                    st.info("📊 Not enough data to create risk heatmap")
+                    
+                # Show a simple risk table instead
+                if 'angle_zone' in filtered_df.columns and 'battingConnectionId' in filtered_df.columns:
+                    st.markdown("##### 📊 Risk Summary Table")
+                    risk_summary = filtered_df.groupby(['angle_zone', 'battingConnectionId']).agg({
+                        'false_shot_score': ['mean', 'count']
+                    }).round(2)
+                    risk_summary.columns = ['Avg Risk Score', 'Frequency']
+                    risk_summary = risk_summary.reset_index()
+                    risk_summary = risk_summary[risk_summary['Frequency'] >= 2]  # Filter low frequency
+                    risk_summary = risk_summary.sort_values('Avg Risk Score', ascending=False)
+                    st.dataframe(risk_summary.head(15), use_container_width=True)
+            
+            except Exception as e:
+                st.error(f"Error in risk analysis: {e}")
         
         with adv_tab4:
             st.markdown("##### 📊 Comprehensive False Shot Analysis")
             st.markdown("Detailed breakdown of false shot patterns and their implications")
             
-            # False shot breakdown by connection type
-            if 'battingConnectionId' in filtered_df.columns:
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.markdown("##### 🔍 False Shot Score by Connection")
-                    connection_scores = filtered_df.groupby('battingConnectionId').agg({
-                        'false_shot_score': ['mean', 'count'],
-                        'runs': 'mean',
-                        'control_score': 'mean'
-                    }).round(2)
+            try:
+                # False shot breakdown by connection type
+                if 'battingConnectionId' in filtered_df.columns:
+                    col1, col2 = st.columns(2)
                     
-                    connection_scores.columns = ['Avg False Shot Score', 'Frequency', 'Avg Runs', 'Avg Control Score']
-                    connection_scores = connection_scores.sort_values('Avg False Shot Score', ascending=False)
-                    st.dataframe(connection_scores, use_container_width=True)
-                
-                with col2:
-                    st.markdown("##### 🎯 Most Vulnerable Shot Types")
-                    if 'battingShotTypeId' in filtered_df.columns:
-                        shot_vulnerability = filtered_df.groupby('battingShotTypeId').agg({
-                            'false_shot_score': 'mean',
-                            'control_score': 'mean',
-                            'runs': 'mean'
+                    with col1:
+                        st.markdown("##### 🔍 False Shot Score by Connection")
+                        connection_scores = filtered_df.groupby('battingConnectionId').agg({
+                            'false_shot_score': ['mean', 'count'],
+                            'runs': 'mean',
+                            'control_score': 'mean'
                         }).round(2)
                         
-                        shot_vulnerability.columns = ['Avg False Shot Score', 'Avg Control Score', 'Avg Runs']
-                        shot_vulnerability = shot_vulnerability.sort_values('Avg False Shot Score', ascending=False)
-                        st.dataframe(shot_vulnerability, use_container_width=True)
+                        connection_scores.columns = ['Avg False Shot Score', 'Frequency', 'Avg Runs', 'Avg Control Score']
+                        connection_scores = connection_scores.sort_values('Avg False Shot Score', ascending=False)
+                        st.dataframe(connection_scores, use_container_width=True)
+                    
+                    with col2:
+                        st.markdown("##### 🎯 Most Vulnerable Shot Types")
+                        if 'battingShotTypeId' in filtered_df.columns:
+                            shot_vulnerability = filtered_df.groupby('battingShotTypeId').agg({
+                                'false_shot_score': 'mean',
+                                'control_score': 'mean',
+                                'runs': 'mean'
+                            }).round(2)
+                            
+                            shot_vulnerability.columns = ['Avg False Shot Score', 'Avg Control Score', 'Avg Runs']
+                            shot_vulnerability = shot_vulnerability.sort_values('Avg False Shot Score', ascending=False)
+                            st.dataframe(shot_vulnerability, use_container_width=True)
+                        else:
+                            st.info("Shot type data not available")
+                    
+                    # False shot trends and insights
+                    st.markdown("##### 📈 False Shot Interpretation Guide")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown("""
+                        **False Shot Score Scale:**
+                        - **0-1:** Excellent control and timing ✅
+                        - **2-3:** Moderate risk, some mistiming ⚠️
+                        - **4-5:** High risk, poor connection/miss ❌
+                        """)
+                    
+                    with col2:
+                        st.markdown("""
+                        **Key Connection Types:**
+                        - **Middled/WellTimed:** Perfect shots (0 score)
+                        - **MisTimed/Edges:** Risky shots (3-4 score)
+                        - **Missed/PlayAndMiss:** Dangerous (5 score)
+                        """)
+                    
+                    # Summary metrics
+                    st.markdown("##### 📊 Summary Statistics")
+                    st.markdown('<div class="advanced-metric">', unsafe_allow_html=True)
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        avg_false_score = filtered_df['false_shot_score'].mean()
+                        st.metric("Avg False Shot Score", f"{avg_false_score:.2f}")
+                    
+                    with col2:
+                        high_risk_pct = (filtered_df['false_shot_score'] >= 4).mean() * 100
+                        st.metric("High Risk Shots %", f"{high_risk_pct:.1f}%")
+                    
+                    with col3:
+                        perfect_shots_pct = (filtered_df['false_shot_score'] == 0).mean() * 100
+                        st.metric("Perfect Shots %", f"{perfect_shots_pct:.1f}%")
+                    
+                    with col4:
+                        avg_control = filtered_df['control_score'].mean()
+                        st.metric("Avg Control Score", f"{avg_control:.1f}/100")
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
+                    
+                    # Distribution chart
+                    st.markdown("##### 📈 False Shot Score Distribution")
+                    false_shot_dist = filtered_df['false_shot_score'].value_counts().sort_index()
+                    
+                    fig_dist = px.bar(
+                        x=false_shot_dist.index,
+                        y=false_shot_dist.values,
+                        title='Distribution of False Shot Scores',
+                        labels={'x': 'False Shot Score', 'y': 'Frequency'},
+                        color=false_shot_dist.index,
+                        color_continuous_scale='RdYlGn_r'
+                    )
+                    st.plotly_chart(fig_dist, use_container_width=True)
                 
-                # False shot trends
-                st.markdown("##### 📈 False Shot Trends")
-                st.markdown("""
-                **Key Insights:**
-                - **False Shot Score 0-1:** Excellent control and timing
-                - **False Shot Score 2-3:** Moderate risk, some mistiming
-                - **False Shot Score 4-5:** High risk, poor connection/complete miss
-                """)
-                
-                # Summary metrics
-                st.markdown('<div class="advanced-metric">', unsafe_allow_html=True)
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    avg_false_score = filtered_df['false_shot_score'].mean()
-                    st.metric("Avg False Shot Score", f"{avg_false_score:.2f}")
-                with col2:
-                    high_risk_pct = (filtered_df['false_shot_score'] >= 4).mean() * 100
-                    st.metric("High Risk Shots %", f"{high_risk_pct:.1f}%")
-                with col3:
-                    perfect_shots_pct = (filtered_df['false_shot_score'] == 0).mean() * 100
-                    st.metric("Perfect Shots %", f"{perfect_shots_pct:.1f}%")
-                with col4:
-                    avg_control = filtered_df['control_score'].mean()
-                    st.metric("Avg Control Score", f"{avg_control:.1f}/100")
-                st.markdown('</div>', unsafe_allow_html=True)
+                else:
+                    st.info("Connection data not available for false shot analysis")
+            
+            except Exception as e:
+                st.error(f"Error in false shot analysis: {e}")
 
 if __name__ == "__main__":
     main()
