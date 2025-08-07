@@ -91,6 +91,13 @@ st.markdown("""
         font-size: 0.85rem;
         margin-top: 0.25rem;
     }
+    .advanced-metric {
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border: 1px solid #2196f3;
+        margin: 0.5rem 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -158,6 +165,7 @@ def create_sample_data():
     np.random.seed(42)
     
     players = ['Smriti Mandhana', 'Harmanpreet Kaur', 'Beth Mooney', 'Alyssa Healy', 'Meg Lanning']
+    bowlers = ['Jess Jonassen', 'Sophie Ecclestone', 'Ashleigh Gardner', 'Shabnim Ismail', 'Marizanne Kapp']
     shot_types = ['Drive', 'Pull', 'Cut', 'Sweep', 'Flick', 'Hook', 'Reverse Sweep', 'Loft']
     connection_types = ['Middled', 'WellTimed', 'Undercontrol', 'MisTimed', 'Missed', 'HitBody']
     
@@ -172,6 +180,7 @@ def create_sample_data():
     
     data = {
         'batsman': np.random.choice(players, n_rows),
+        'bowler': np.random.choice(bowlers, n_rows),
         'battingShotTypeId': np.random.choice(shot_types, n_rows),
         'battingConnectionId': np.random.choice(connection_types, n_rows, p=[0.3, 0.25, 0.2, 0.15, 0.05, 0.05]),
         'runs': np.random.choice([0, 1, 2, 3, 4, 6], n_rows, p=[0.3, 0.25, 0.2, 0.1, 0.1, 0.05]),
@@ -180,6 +189,7 @@ def create_sample_data():
         'shotMagnitude': np.random.uniform(50, 200, n_rows),
         'isAirControlled': np.random.choice([True, False], n_rows, p=[0.3, 0.7]),
         'isBoundary': np.random.choice([True, False], n_rows, p=[0.15, 0.85]),
+        'isWicket': np.random.choice([True, False], n_rows, p=[0.05, 0.95]),
         'commentary': ['Good shot!', 'Excellent timing!', 'Mistimed!', 'Great connection!'] * (n_rows // 4),
         'fixtureId': np.random.randint(1, 21, n_rows),
         'battingTeam': np.random.choice(['Team A', 'Team B', 'Team C', 'Team D'], n_rows),
@@ -215,6 +225,34 @@ def create_sample_data():
     df['commentary'] = df.apply(generate_commentary, axis=1)
     
     return df
+
+def false_shot_score(connection_id):
+    """Calculate false shot score based on batting connection"""
+    false_shot_mapping = {
+        'Middled': 0,
+        'WellTimed': 0,
+        'Undercontrol': 0,
+        'Left': 0,
+        'MisTimed': 3,
+        'Mis-timed': 3,
+        'BottomEdge': 4,
+        'TopEdge': 4,
+        'BatPad': 4,
+        'InsideEdge': 3,
+        'LeadingEdge': 4,
+        'OutsideEdge': 3,
+        'Gloved': 3,
+        'ThickEdge': 3,
+        'Missed': 5,
+        'PlayAndMiss': 5,
+        'PlayAndMissLegSide': 5,
+        'HitBody': 2,
+        'HitHelmet': 2,
+        'HitPad': 2,
+        'Padded': 2,
+        'Spliced': 4
+    }
+    return false_shot_mapping.get(str(connection_id).strip(), 2)
 
 def calculate_shot_intelligence_metrics(df):
     """Calculate advanced shot intelligence metrics"""
@@ -414,6 +452,9 @@ def calculate_shot_intelligence_metrics(df):
             'Smart Selection',
             'Risky Selection'
         )
+    
+    # 10. Add false shot score for advanced analytics
+    df['false_shot_score'] = df['battingConnectionId'].apply(false_shot_score)
     
     return df
 
@@ -779,6 +820,123 @@ def create_player_comparison_radar(df, selected_players):
     
     return fig
 
+def create_bowling_effectiveness_chart(df):
+    """Create bowling effectiveness analysis"""
+    if 'bowler' not in df.columns or 'false_shot_score' not in df.columns:
+        return go.Figure()
+    
+    # Calculate bowler effectiveness metrics
+    bowler_stats = df.groupby('bowler').agg({
+        'false_shot_score': ['sum', 'mean'],
+        'totalBallNumber': 'count',
+        'runs': ['sum', 'mean'],
+        'is_boundary': 'sum',
+        'isWicket': 'sum' if 'isWicket' in df.columns else 'count'
+    }).round(2)
+    
+    bowler_stats.columns = ['Total False Shots', 'Avg False Shot Rate', 'Balls Bowled', 
+                           'Total Runs', 'Avg Runs/Ball', 'Boundaries Conceded', 'Wickets']
+    
+    # Filter bowlers with at least 20 balls
+    bowler_stats = bowler_stats[bowler_stats['Balls Bowled'] >= 20].reset_index()
+    
+    # Calculate economy rate
+    bowler_stats['Economy Rate'] = (bowler_stats['Total Runs'] / bowler_stats['Balls Bowled']) * 6
+    
+    # Calculate false shot rate per ball
+    bowler_stats['False Shot Rate/Ball'] = bowler_stats['Total False Shots'] / bowler_stats['Balls Bowled']
+    
+    if bowler_stats.empty:
+        return go.Figure()
+    
+    fig = px.scatter(
+        bowler_stats,
+        x='Economy Rate',
+        y='False Shot Rate/Ball',
+        size='Balls Bowled',
+        color='Avg False Shot Rate',
+        text='bowler',
+        title='Bowler Effectiveness: Economy vs False Shot Induction',
+        labels={
+            'Economy Rate': 'Economy Rate (Runs per Over)',
+            'False Shot Rate/Ball': 'False Shots per Ball',
+            'Avg False Shot Rate': 'Average False Shot Score'
+        },
+        color_continuous_scale='RdYlGn_r'  # Reverse scale - higher false shot rate is better for bowlers
+    )
+    
+    fig.update_traces(textposition="top center")
+    fig.update_layout(height=600)
+    
+    return fig
+
+def create_pressure_performance_analysis(df):
+    """Analyze performance under pressure situations"""
+    if 'totalBallNumber' not in df.columns:
+        return go.Figure()
+    
+    # Define pressure situations
+    df['pressure_situation'] = 'Normal'
+    df.loc[df['totalBallNumber'] >= 76, 'pressure_situation'] = 'Death Overs'
+    df.loc[df['totalBallNumber'] <= 25, 'pressure_situation'] = 'Powerplay'
+    
+    pressure_stats = df.groupby(['batsman', 'pressure_situation']).agg({
+        'runs': 'mean',
+        'control_score': 'mean',
+        'is_boundary': 'mean',
+        'false_shot_score': 'mean'
+    }).reset_index()
+    
+    if pressure_stats.empty:
+        return go.Figure()
+    
+    fig = px.bar(
+        pressure_stats,
+        x='batsman',
+        y='control_score',
+        color='pressure_situation',
+        barmode='group',
+        title='Pressure Performance: Control Score by Match Situation',
+        labels={
+            'control_score': 'Average Control Score',
+            'batsman': 'Batsman',
+            'pressure_situation': 'Match Situation'
+        },
+        height=500
+    )
+    
+    fig.update_layout(xaxis_tickangle=-45)
+    
+    return fig
+
+def create_wicket_probability_heatmap(df):
+    """Create wicket probability heatmap based on shot zones and connections"""
+    if 'angle_zone' not in df.columns or 'battingConnectionId' not in df.columns:
+        return go.Figure()
+    
+    # Create wicket probability matrix
+    wicket_prob = df.groupby(['angle_zone', 'battingConnectionId']).agg({
+        'isWicket': 'mean' if 'isWicket' in df.columns else lambda x: 0,
+        'false_shot_score': 'mean'
+    }).reset_index()
+    
+    if wicket_prob.empty:
+        return go.Figure()
+    
+    # Pivot for heatmap
+    heatmap_data = wicket_prob.pivot(index='battingConnectionId', 
+                                   columns='angle_zone', 
+                                   values='false_shot_score')
+    
+    fig = px.imshow(
+        heatmap_data,
+        title='Risk Heatmap: False Shot Score by Zone and Connection',
+        labels={'x': 'Shot Zone', 'y': 'Connection Type', 'color': 'False Shot Score'},
+        color_continuous_scale='Reds'
+    )
+    
+    return fig
+
 def main():
     """Main Streamlit app"""
     
@@ -849,19 +1007,17 @@ def main():
     
     # Main dashboard tabs
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "🎯 Shot Placement", 
-        "⚡ Control vs Aggression", 
+        "🎯 Shot Placement",
+        "⚡ Control vs Aggression",
         "📊 Match Phase Analysis",
         "🏆 Player Intelligence",
         "📈 Player Comparison",
         "🔍 Advanced Analytics"
     ])
-    
+
     with tab1:
         st.subheader("360° Shot Placement Intelligence")
-        
         col1, col2 = st.columns([2, 1])
-        
         with col1:
             if selected_players:
                 selected_player = st.selectbox("Select Player for Detailed Analysis", selected_players)
@@ -870,35 +1026,32 @@ def main():
                     st.plotly_chart(fig, use_container_width=True)
             else:
                 st.warning("Please select at least one player from the sidebar.")
-        
         with col2:
             st.markdown("##### 🧠 Interpretation")
             st.markdown("""
-                - **Green markers** indicate excellent control (80-100).
-                - **Orange markers** indicate moderate control (50-79).
-                - **Red markers** indicate poor control (0-49).
+                - **Green markers** indicate excellent control (80–100).
+                - **Orange markers** indicate moderate control (50–79).
+                - **Red markers** indicate poor control (0–49).
                 - **Marker size** increases with runs scored.
                 - Hover to see shot type, runs, connection, and control score.
             """)
-    
+
     with tab2:
         st.subheader("Control vs Aggression Matrix")
         fig = create_control_vs_aggression_chart(filtered_df)
         st.plotly_chart(fig, use_container_width=True)
-    
+
     with tab3:
         st.subheader("Match Phase Shot Analysis")
         fig = create_match_phase_analysis(filtered_df)
         st.plotly_chart(fig, use_container_width=True)
-    
+
     with tab4:
         st.subheader("Player Intelligence Cards")
-        
         if selected_players:
             for player in selected_players:
                 player_data = filtered_df[filtered_df['batsman'] == player]
                 if not player_data.empty:
-                    # Basic metrics card
                     st.markdown(f"#### {player}")
                     col1, col2, col3 = st.columns(3)
                     with col1:
@@ -908,52 +1061,41 @@ def main():
                     with col3:
                         st.metric("Boundary %", f"{player_data['is_boundary'].mean() * 100:.1f}%")
                     st.progress(min(player_data['control_score'].mean() / 100, 1.0))
-                    st.caption("Control Score Progress (0-100)")
-                    
-                    # Player insights card
+                    st.caption("Control Score Progress (0–100)")
+
                     insights = get_player_insights(player_data)
                     if insights:
                         st.markdown('<div class="insight-card">', unsafe_allow_html=True)
                         st.markdown("##### 🎯 Player Insights")
-                        
-                        # Display insights in a grid
                         insight_cols = st.columns(2)
-                        
+
                         with insight_cols[0]:
                             if 'favorite_shot' in insights:
-                                st.markdown(f'<div class="insight-title">🏏 Favorite Shot</div>', unsafe_allow_html=True)
+                                st.markdown('<div class="insight-title">🏏 Favorite Shot</div>', unsafe_allow_html=True)
                                 st.markdown(f'<div class="insight-content">{insights["favorite_shot"]}</div>', unsafe_allow_html=True)
-                            
                             if 'dismissal_pattern' in insights:
-                                st.markdown(f'<div class="insight-title">⚠️ Dismissal Pattern</div>', unsafe_allow_html=True)
+                                st.markdown('<div class="insight-title">⚠️ Dismissal Pattern</div>', unsafe_allow_html=True)
                                 st.markdown(f'<div class="insight-content">{insights["dismissal_pattern"]}</div>', unsafe_allow_html=True)
-                        
+
                         with insight_cols[1]:
                             if 'bowl_to' in insights:
-                                st.markdown(f'<div class="insight-title">🎯 Bowl To</div>', unsafe_allow_html=True)
-                                # Display multiple bowling recommendations
+                                st.markdown('<div class="insight-title">🎯 Bowl To</div>', unsafe_allow_html=True)
                                 st.markdown('<div class="bowling-recommendation">', unsafe_allow_html=True)
                                 for rec in insights['bowl_to']:
                                     st.markdown(f'<div class="recommendation-item">• {rec}</div>', unsafe_allow_html=True)
-                                
-                                # Add connection note if available
                                 if 'bowl_to_connection' in insights:
                                     st.markdown(f'<div class="connection-note">Targets dismissals to {insights["bowl_to_connection"]}</div>', unsafe_allow_html=True)
-                                
                                 st.markdown('</div>', unsafe_allow_html=True)
-                            
                             if 'strength_area' in insights:
-                                st.markdown(f'<div class="insight-title">💪 Strength Area</div>', unsafe_allow_html=True)
+                                st.markdown('<div class="insight-title">💪 Strength Area</div>', unsafe_allow_html=True)
                                 st.markdown(f'<div class="insight-content">{insights["strength_area"]}</div>', unsafe_allow_html=True)
-                            
                             if 'most_effective' in insights:
-                                st.markdown(f'<div class="insight-title">🚀 Most Effective</div>', unsafe_allow_html=True)
+                                st.markdown('<div class="insight-title">🚀 Most Effective</div>', unsafe_allow_html=True)
                                 st.markdown(f'<div class="insight-content">{insights["most_effective"]}</div>', unsafe_allow_html=True)
-                        
                         st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.warning("Please select at least one player from the sidebar to view intelligence cards.")
-    
+
     with tab5:
         st.subheader("Radar Comparison of Selected Players")
         if selected_players and len(selected_players) >= 2:
@@ -961,33 +1103,138 @@ def main():
             st.plotly_chart(radar_fig, use_container_width=True)
         else:
             st.warning("Please select at least 2 players from the sidebar for comparison.")
-    
-    with tab6:
-        st.subheader("🔍 Advanced Data Table")
-        
-        # Add download button for filtered data
-        csv = filtered_df.to_csv(index=False)
-        st.download_button(
-            label="📥 Download Filtered Data as CSV",
-            data=csv,
-            file_name=f"cricket_analytics_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
-        )
-        
-        # Display sample of the data
-        st.dataframe(filtered_df.head(1000), use_container_width=True)
-        
-        # Show summary statistics
-        if st.checkbox("Show Summary Statistics"):
-            st.subheader("📈 Summary Statistics")
-            numeric_cols = filtered_df.select_dtypes(include=[np.number]).columns
-            if len(numeric_cols) > 0:
-                st.dataframe(filtered_df[numeric_cols].describe(), use_container_width=True)
 
-# Add information about deployment
-def show_deployment_info():
-    """Show deployment information in sidebar"""
-    pass  # Removed deployment info
+    with tab6:
+        st.subheader("🔍 Advanced Cricket Analytics")
+        
+        # Create sub-tabs for different advanced analytics
+        adv_tab1, adv_tab2, adv_tab3, adv_tab4 = st.tabs([
+            "🎳 Bowling Effectiveness",
+            "⚡ Pressure Performance", 
+            "🎯 Risk Heatmap",
+            "📊 False Shot Analysis"
+        ])
+        
+        with adv_tab1:
+            st.markdown("##### 🎳 Bowler Effectiveness Matrix")
+            st.markdown("Analyzing bowlers based on their ability to induce false shots while maintaining economy")
+            
+            bowling_fig = create_bowling_effectiveness_chart(filtered_df)
+            if bowling_fig.data:
+                st.plotly_chart(bowling_fig, use_container_width=True)
+            else:
+                st.warning("Not enough bowling data to create effectiveness chart")
+            
+            # Top bowlers table
+            if 'bowler' in filtered_df.columns:
+                st.markdown("##### 🏆 Top False Shot Inducers")
+                bowler_summary = filtered_df.groupby('bowler').agg({
+                    'false_shot_score': ['sum', 'mean'],
+                    'totalBallNumber': 'count',
+                    'runs': 'sum'
+                }).round(2)
+                
+                bowler_summary.columns = ['Total False Shots', 'Avg False Shot Score', 'Balls Bowled', 'Runs Conceded']
+                bowler_summary = bowler_summary[bowler_summary['Balls Bowled'] >= 10]
+                bowler_summary['False Shot Rate'] = bowler_summary['Total False Shots'] / bowler_summary['Balls Bowled']
+                bowler_summary = bowler_summary.sort_values('False Shot Rate', ascending=False)
+                
+                st.dataframe(bowler_summary.head(10), use_container_width=True)
+        
+        with adv_tab2:
+            st.markdown("##### ⚡ Performance Under Pressure")
+            st.markdown("Comparing player performance across different match phases")
+            
+            pressure_fig = create_pressure_performance_analysis(filtered_df)
+            if pressure_fig.data:
+                st.plotly_chart(pressure_fig, use_container_width=True)
+            else:
+                st.warning("Not enough data to create pressure analysis")
+            
+            # Pressure statistics
+            if 'totalBallNumber' in filtered_df.columns and selected_players:
+                st.markdown("##### 📈 Pressure Statistics")
+                
+                filtered_df['pressure_phase'] = 'Normal'
+                filtered_df.loc[filtered_df['totalBallNumber'] >= 76, 'pressure_phase'] = 'Death Overs'
+                filtered_df.loc[filtered_df['totalBallNumber'] <= 25, 'pressure_phase'] = 'Powerplay'
+                
+                pressure_stats = filtered_df.groupby(['batsman', 'pressure_phase']).agg({
+                    'control_score': 'mean',
+                    'runs': 'mean',
+                    'is_boundary': 'mean'
+                }).round(2).reset_index()
+                
+                st.dataframe(pressure_stats, use_container_width=True)
+        
+        with adv_tab3:
+            st.markdown("##### 🎯 Risk Assessment Heatmap")
+            st.markdown("Visualizing risk levels across different shot zones and connection types")
+            
+            risk_fig = create_wicket_probability_heatmap(filtered_df)
+            if risk_fig.data:
+                st.plotly_chart(risk_fig, use_container_width=True)
+            else:
+                st.warning("Not enough data to create risk heatmap")
+        
+        with adv_tab4:
+            st.markdown("##### 📊 Comprehensive False Shot Analysis")
+            st.markdown("Detailed breakdown of false shot patterns and their implications")
+            
+            # False shot breakdown by connection type
+            if 'battingConnectionId' in filtered_df.columns:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("##### 🔍 False Shot Score by Connection")
+                    connection_scores = filtered_df.groupby('battingConnectionId').agg({
+                        'false_shot_score': ['mean', 'count'],
+                        'runs': 'mean',
+                        'control_score': 'mean'
+                    }).round(2)
+                    
+                    connection_scores.columns = ['Avg False Shot Score', 'Frequency', 'Avg Runs', 'Avg Control Score']
+                    connection_scores = connection_scores.sort_values('Avg False Shot Score', ascending=False)
+                    st.dataframe(connection_scores, use_container_width=True)
+                
+                with col2:
+                    st.markdown("##### 🎯 Most Vulnerable Shot Types")
+                    if 'battingShotTypeId' in filtered_df.columns:
+                        shot_vulnerability = filtered_df.groupby('battingShotTypeId').agg({
+                            'false_shot_score': 'mean',
+                            'control_score': 'mean',
+                            'runs': 'mean'
+                        }).round(2)
+                        
+                        shot_vulnerability.columns = ['Avg False Shot Score', 'Avg Control Score', 'Avg Runs']
+                        shot_vulnerability = shot_vulnerability.sort_values('Avg False Shot Score', ascending=False)
+                        st.dataframe(shot_vulnerability, use_container_width=True)
+                
+                # False shot trends
+                st.markdown("##### 📈 False Shot Trends")
+                st.markdown("""
+                **Key Insights:**
+                - **False Shot Score 0-1:** Excellent control and timing
+                - **False Shot Score 2-3:** Moderate risk, some mistiming
+                - **False Shot Score 4-5:** High risk, poor connection/complete miss
+                """)
+                
+                # Summary metrics
+                st.markdown('<div class="advanced-metric">', unsafe_allow_html=True)
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    avg_false_score = filtered_df['false_shot_score'].mean()
+                    st.metric("Avg False Shot Score", f"{avg_false_score:.2f}")
+                with col2:
+                    high_risk_pct = (filtered_df['false_shot_score'] >= 4).mean() * 100
+                    st.metric("High Risk Shots %", f"{high_risk_pct:.1f}%")
+                with col3:
+                    perfect_shots_pct = (filtered_df['false_shot_score'] == 0).mean() * 100
+                    st.metric("Perfect Shots %", f"{perfect_shots_pct:.1f}%")
+                with col4:
+                    avg_control = filtered_df['control_score'].mean()
+                    st.metric("Avg Control Score", f"{avg_control:.1f}/100")
+                st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
