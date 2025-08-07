@@ -848,6 +848,7 @@ def main():
         return
     
     # Main dashboard tabs
+# Main dashboard tabs
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🎯 Shot Placement", 
     "⚡ Control vs Aggression", 
@@ -857,7 +858,6 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔍 Advanced Analytics"
 ])
 
-# TAB 1 – Shot Placement
 with tab1:
     st.subheader("360° Shot Placement Intelligence")
     
@@ -882,19 +882,16 @@ with tab1:
             - Hover to see shot type, runs, connection, and control score.
         """)
 
-# TAB 2 – Control vs Aggression
 with tab2:
     st.subheader("Control vs Aggression Matrix")
     fig = create_control_vs_aggression_chart(filtered_df)
     st.plotly_chart(fig, use_container_width=True)
 
-# TAB 3 – Match Phase Analysis
 with tab3:
     st.subheader("Match Phase Shot Analysis")
     fig = create_match_phase_analysis(filtered_df)
     st.plotly_chart(fig, use_container_width=True)
 
-# TAB 4 – Player Intelligence Cards
 with tab4:
     st.subheader("Player Intelligence Cards")
     
@@ -920,41 +917,41 @@ with tab4:
                     st.markdown('<div class="insight-card">', unsafe_allow_html=True)
                     st.markdown("##### 🎯 Player Insights")
                     
-                    # Display insights in a grid
                     insight_cols = st.columns(2)
                     
                     with insight_cols[0]:
                         if 'favorite_shot' in insights:
-                            st.markdown(f'<div class="insight-title">🏏 Favorite Shot</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="insight-title">🏏 Favorite Shot</div>', unsafe_allow_html=True)
                             st.markdown(f'<div class="insight-content">{insights["favorite_shot"]}</div>', unsafe_allow_html=True)
                         
                         if 'dismissal_pattern' in insights:
-                            st.markdown(f'<div class="insight-title">⚠️ Dismissal Pattern</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="insight-title">⚠️ Dismissal Pattern</div>', unsafe_allow_html=True)
                             st.markdown(f'<div class="insight-content">{insights["dismissal_pattern"]}</div>', unsafe_allow_html=True)
                     
                     with insight_cols[1]:
                         if 'bowl_to' in insights:
-                            st.markdown(f'<div class="insight-title">🎯 Bowl To</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="insight-title">🎯 Bowl To</div>', unsafe_allow_html=True)
                             st.markdown('<div class="bowling-recommendation">', unsafe_allow_html=True)
                             for rec in insights['bowl_to']:
                                 st.markdown(f'<div class="recommendation-item">• {rec}</div>', unsafe_allow_html=True)
+                            
                             if 'bowl_to_connection' in insights:
                                 st.markdown(f'<div class="connection-note">Targets dismissals to {insights["bowl_to_connection"]}</div>', unsafe_allow_html=True)
+                            
                             st.markdown('</div>', unsafe_allow_html=True)
                         
                         if 'strength_area' in insights:
-                            st.markdown(f'<div class="insight-title">💪 Strength Area</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="insight-title">💪 Strength Area</div>', unsafe_allow_html=True)
                             st.markdown(f'<div class="insight-content">{insights["strength_area"]}</div>', unsafe_allow_html=True)
                         
                         if 'most_effective' in insights:
-                            st.markdown(f'<div class="insight-title">🚀 Most Effective</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="insight-title">🚀 Most Effective</div>', unsafe_allow_html=True)
                             st.markdown(f'<div class="insight-content">{insights["most_effective"]}</div>', unsafe_allow_html=True)
                     
                     st.markdown('</div>', unsafe_allow_html=True)
     else:
         st.warning("Please select at least one player from the sidebar to view intelligence cards.")
 
-# TAB 5 – Player Comparison Radar
 with tab5:
     st.subheader("Radar Comparison of Selected Players")
     if selected_players and len(selected_players) >= 2:
@@ -963,7 +960,6 @@ with tab5:
     else:
         st.warning("Please select at least 2 players from the sidebar for comparison.")
 
-# TAB 6 – False Shot Inducers
 with tab6:
     st.subheader("🧠 False Shot Inducers – Bowlers")
     st.markdown("""
@@ -1014,4 +1010,5 @@ def show_deployment_info():
 
 if __name__ == "__main__":
     main()
+
 
