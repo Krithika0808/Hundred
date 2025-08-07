@@ -854,7 +854,7 @@ def main():
         "📊 Match Phase Analysis",
         "🏆 Player Intelligence",
         "📈 Player Comparison",
-        "Bowler False Shot"
+        "🔍 Advanced Analytics"
     ])
     
     with tab1:
@@ -954,16 +954,16 @@ def main():
         else:
             st.warning("Please select at least one player from the sidebar to view intelligence cards.")
     
-with tab5:
-    st.subheader("Radar Comparison of Selected Players")
-    if selected_players and len(selected_players) >= 2:
-        radar_fig = create_player_comparison_radar(filtered_df, selected_players)
-        st.plotly_chart(radar_fig, use_container_width=True)
-    else:
-        st.warning("Please select at least 2 players from the sidebar for comparison.")
-
-with tab6:
-    st.subheader("🧠 False Shot Inducers – Bowlers")
+    with tab5:
+        st.subheader("Radar Comparison of Selected Players")
+        if selected_players and len(selected_players) >= 2:
+            radar_fig = create_player_comparison_radar(filtered_df, selected_players)
+            st.plotly_chart(radar_fig, use_container_width=True)
+        else:
+            st.warning("Please select at least 2 players from the sidebar for comparison.")
+    
+    with tab6:
+        st.subheader("🧠 False Shot Inducers – Bowlers")
     st.markdown("""
     This chart shows which bowlers consistently induce mistimed or uncontrolled shots,
     based on `battingConnectionId` classification.
@@ -1002,6 +1002,7 @@ with tab6:
     st.dataframe(bowler_false_shot.head(20), use_container_width=True)
     st.markdown("🔍 **False Shot Rate** = Average uncontrolled/mistimed shot score per ball bowled.")
 
+    
 
 # Add information about deployment
 def show_deployment_info():
@@ -1010,17 +1011,3 @@ def show_deployment_info():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
