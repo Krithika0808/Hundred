@@ -961,7 +961,8 @@ def main():
             st.plotly_chart(radar_fig, use_container_width=True)
         else:
             st.warning("Please select at least 2 players from the sidebar for comparison.")
-            with tab5:
+          
+    with tab5:
     st.header("🧠 False Shot Inducers – Bowlers")
 
     st.markdown("""
@@ -1010,6 +1011,7 @@ def show_deployment_info():
 
 if __name__ == "__main__":
     main()
+
 
 
 
