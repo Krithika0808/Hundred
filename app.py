@@ -848,12 +848,13 @@ def main():
         return
     
     # Main dashboard tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "🎯 Shot Placement", 
         "⚡ Control vs Aggression", 
         "📊 Match Phase Analysis",
         "🏆 Player Intelligence",
         "📈 Player Comparison",
+        "Bowler False Shot"
     ])
     
     with tab1:
@@ -960,6 +961,47 @@ def main():
             st.plotly_chart(radar_fig, use_container_width=True)
         else:
             st.warning("Please select at least 2 players from the sidebar for comparison.")
+            with tab5:
+    st.header("🧠 False Shot Inducers – Bowlers")
+
+    st.markdown("""
+    This chart shows which bowlers consistently induce mistimed or uncontrolled shots,
+    based on `battingConnectionId` classification.
+    """)
+
+    # Define control score
+    def false_shot_score(battingConnectionId):
+        if pd.isna(battingConnectionId):
+            return None
+        controlled = ['UnderControl', 'WellTimed', 'Well Timed', 'Middled']
+        edges = [
+            'edge', 'InsideEdge', 'TopEdge', 'LeadingEdge', 'BottomEdge',
+            'Gloved', 'BatPad', 'OutsideEdge', 'ThickEdge'
+        ]
+        if battingConnectionId in controlled:
+            return 0
+        elif battingConnectionId in edges:
+            return 0.5
+        else:
+            return 1
+
+    df['false_shot_score'] = df['battingConnectionId'].apply(false_shot_score)
+    filtered = df.dropna(subset=['false_shot_score'])
+
+    bowler_false_shot = (
+        filtered.groupby('bowler')
+        .agg(
+            balls_bowled=('totalBallNumber', 'count'),
+            false_shot_total=('false_shot_score', 'sum')
+        )
+        .assign(false_shot_rate=lambda x: x['false_shot_total'] / x['balls_bowled'])
+        .sort_values(by='false_shot_total', ascending=False)
+        .reset_index()
+    )
+
+    st.dataframe(bowler_false_shot.head(20), use_container_width=True)
+
+    st.markdown("🔍 **False Shot Rate** = Average uncontrolled/mistimed shot score per ball bowled.")
 
 # Add information about deployment
 def show_deployment_info():
@@ -968,6 +1010,7 @@ def show_deployment_info():
 
 if __name__ == "__main__":
     main()
+
 
 
 
