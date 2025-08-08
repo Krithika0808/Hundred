@@ -787,7 +787,7 @@ else:
                 runs_conceded=('runs', 'sum'),
                 avg_control_against=('control_score', 'mean')
             ).reset_index()
-            bowler_pressure_df = bowler_pressure_df[bowler_pressure_df['balls_bowled'] >= 20]
+            bowler_pressure_df = bowler_pressure_df[bowler_pressure_df['balls_bowled'] >= 5]
             if not bowler_pressure_df.empty:
                 bowler_pressure_df['Pressure Index'] = bowler_pressure_df['total_false_shots'] / bowler_pressure_df['balls_bowled']
                 bowler_pressure_df['Economy'] = bowler_pressure_df['runs_conceded'] / bowler_pressure_df['balls_bowled']
@@ -810,3 +810,4 @@ else:
                         st.dataframe(shot_vulnerability.sort_values('avg_false_shot_score', ascending=False), use_container_width=True)
                     else:
                         st.info("Not enough data for this bowler.")
+
