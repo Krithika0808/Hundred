@@ -1,287 +1,320 @@
 import streamlit as st
 import pandas as pd
-import matplotlib
-matplotlib.use("Agg")  # Use non-GUI backend
-import matplotlib.pyplot as plt
-import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import requests
+from io import StringIO
+from datetime import datetime
+import numpy as np
 
-# Page config
+# --- Configuration and Data Loading ---
+
+# Set Streamlit page configuration
 st.set_page_config(
-    page_title="Hundred Women Cricket Analysis",
+    page_title="Hundred Women's Cricket Analysis",
     page_icon="🏏",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
+# URL for the raw CSV data on GitHub
+GITHUB_CSV_URL = "https://raw.githubusercontent.com/Krithika0808/Hundred/main/Hundred.csv"
+
 @st.cache_data
-def load_data():
-    url = "https://raw.githubusercontent.com/Krithika0808/Hundred/main/Hundred.csv"
-    df = pd.read_csv(url)
-    
-    # Clean the data
-    df['runs'] = pd.to_numeric(df['runs'], errors='coerce').fillna(0)
-    df['shotAngle'] = pd.to_numeric(df['shotAngle'], errors='coerce')
-    df['shotMagnitude'] = pd.to_numeric(df['shotMagnitude'], errors='coerce')
-    
-    return df
-
-# Load data
-df = load_data()
-
-# Main title
-st.title("🏏 Hundred Women Cricket Analysis Dashboard")
-
-# Create tabs for the 4 main features
-tab1, tab2, tab3, tab4 = st.tabs(["🎯 Wagon Wheel", "📊 Control Percentage", "⚖️ Risk vs Reward", "🎳 Bowler Strength"])
-
-with tab1:
-    st.header("🎯 Wagon Wheel Analysis")
-    
-    # Player selection
-    players = df["batsman"].dropna().unique()
-    selected_player = st.selectbox("Select Batter", sorted(players))
-    
-    # Filter data
-    player_df = df[(df["batsman"] == selected_player) & (df["shotAngle"].notnull())]
-    
-    if player_df.empty:
-        st.warning("No data available for this player.")
-    else:
-        col1, col2 = st.columns([2, 1])
+def load_data_from_github(url):
+    """
+    Loads cricket data from a public GitHub repository.
+    Uses requests to fetch the raw CSV content and pandas to read it.
+    """
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Check for HTTP errors
         
-        with col1:
-            # Your original wagon wheel code
-            angles = np.deg2rad(player_df["shotAngle"])
-            magnitudes = player_df["shotMagnitude"]
-            
-            fig, ax = plt.subplots(subplot_kw={'projection': 'polar'}, figsize=(8, 8))
-            ax.set_theta_zero_location("N")   # 0 degrees is straight ahead
-            ax.set_theta_direction(-1)        # Clockwise
-            
-            # Color by runs scored
-            colors = player_df['runs'].fillna(0)
-            scatter = ax.scatter(angles, magnitudes, c=colors, alpha=0.7, cmap='RdYlGn', s=50)
-            ax.set_title(f"Wagon Wheel – {selected_player}", va='bottom', fontsize=14)
-            
-            # Add colorbar
-            plt.colorbar(scatter, ax=ax, label='Runs Scored')
-            st.pyplot(fig)
+        csv_content = StringIO(response.text)
+        df = pd.read_csv(csv_content)
         
-        with col2:
-            st.subheader("Player Stats")
-            total_runs = int(player_df['runs'].sum())
-            total_balls = len(player_df)
-            boundaries = len(player_df[player_df['runs'] >= 4])
-            strike_rate = (total_runs / total_balls * 100) if total_balls > 0 else 0
-            
-            st.metric("Total Runs", total_runs)
-            st.metric("Balls Faced", total_balls)
-            st.metric("Strike Rate", f"{strike_rate:.1f}")
-            st.metric("Boundaries", boundaries)
-
-with tab2:
-    st.header("📊 Control Percentage Analysis")
-    
-    # Calculate control percentage based on connection quality
-    def calculate_control(df):
-        # Map connection types to control scores
-        control_mapping = {
-            'Middled': 100, 'WellTimed': 90, 'Undercontrol': 85,
-            'MisTimed': 40, 'TopEdge': 30, 'BottomEdge': 30,
-            'InsideEdge': 35, 'OutsideEdge': 35, 'Missed': 0
-        }
+        # --- Data Cleaning and Preprocessing ---
         
-        if 'battingConnectionId' in df.columns:
-            df['control_score'] = df['battingConnectionId'].map(control_mapping).fillna(60)
-        else:
-            # If no connection data, estimate from runs and other factors
-            df['control_score'] = np.where(df['runs'] >= 4, 80, 70)  # Boundaries suggest good control
-            df['control_score'] = np.where(df['runs'] == 0, df['control_score'] - 20, df['control_score'])
+        # Convert date column to datetime objects
+        df['matchDate'] = pd.to_datetime(df['matchDate'], errors='coerce')
+        
+        # Ensure key numeric columns have the correct type
+        numeric_cols = ['runs', 'isWicket', 'overNumber', 'totalBallNumber', 'runsConceded',
+                        'shotAngle', 'shotMagnitude', 'runsScored', 'extras', 'runsWide', 'runsByes', 'runsLegByes']
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        
+        # Fill missing string data with 'Unknown'
+        string_cols = ['batsman', 'bowler', 'battingTeam', 'bowlingTeam', 'battingShotTypeId']
+        for col in string_cols:
+            if col in df.columns:
+                df[col] = df[col].fillna('Unknown')
+        
+        # Create a `match_phase` column based on ball number
+        df['match_phase'] = df['totalBallNumber'].apply(lambda x: 
+            'Powerplay' if x <= 25 else ('Middle Overs' if x <= 75 else 'Death Overs')
+        )
         
         return df
-    
-    df_with_control = calculate_control(df.copy())
-    
-    # Control stats by player
-    control_stats = df_with_control.groupby('batsman').agg({
-        'control_score': 'mean',
-        'runs': ['sum', 'count'],
-    }).round(1)
-    
-    control_stats.columns = ['Control%', 'Total_Runs', 'Balls_Faced']
-    control_stats = control_stats.reset_index()
-    control_stats = control_stats.sort_values('Control%', ascending=False)
-    
-    # Display top players
-    st.subheader("🏆 Top Players by Control Percentage")
-    fig_control = px.bar(
-        control_stats.head(10),
-        x='batsman',
-        y='Control%',
-        title='Top 10 Players - Control Percentage',
-        color='Control%',
-        color_continuous_scale='RdYlGn'
-    )
-    fig_control.update_layout(xaxis_tickangle=45)
-    st.plotly_chart(fig_control, use_container_width=True)
-    
-    # Player selector for detailed view
-    selected_control_player = st.selectbox("Select Player for Detailed Control Analysis", sorted(df['batsman'].unique()), key="control_player")
-    
-    player_control_data = df_with_control[df_with_control['batsman'] == selected_control_player]
-    if not player_control_data.empty:
-        avg_control = player_control_data['control_score'].mean()
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Average Control %", f"{avg_control:.1f}%")
-        with col2:
-            good_shots = len(player_control_data[player_control_data['control_score'] >= 70])
-            st.metric("Well Controlled Shots", f"{good_shots}/{len(player_control_data)}")
-        with col3:
-            control_efficiency = (avg_control * player_control_data['runs'].mean()) / 100
-            st.metric("Control Efficiency", f"{control_efficiency:.2f}")
 
-with tab3:
-    st.header("⚖️ Risk vs Reward Analysis")
-    
-    # Calculate risk score
-    def calculate_risk_score(row):
-        risk = 0
-        # High magnitude shots are riskier
-        if pd.notna(row['shotMagnitude']) and row['shotMagnitude'] > 80:
-            risk += 3
-        # Boundaries are riskier but rewarding
-        if row['runs'] >= 4:
-            risk += 2
-        # Certain shot types are riskier
-        if pd.notna(row['battingShotTypeId']):
-            risky_shots = ['Hook', 'Pull', 'Sweep', 'Reverse Sweep']
-            if any(shot in str(row['battingShotTypeId']) for shot in risky_shots):
-                risk += 2
-        return min(risk, 10)  # Cap at 10
-    
-    df['risk_score'] = df.apply(calculate_risk_score, axis=1)
-    
-    # Risk vs Reward by player
-    risk_reward = df.groupby('batsman').agg({
-        'risk_score': 'mean',
-        'runs': 'mean',
-        'runs': 'sum'
-    }).round(2)
-    
-    risk_reward.columns = ['Avg_Risk', 'Avg_Reward_per_Ball', 'Total_Runs']
-    risk_reward = risk_reward.reset_index()
-    
-    # Create scatter plot
-    fig_risk = px.scatter(
-        risk_reward,
-        x='Avg_Risk',
-        y='Avg_Reward_per_Ball',
-        size='Total_Runs',
-        hover_name='batsman',
-        title='Risk vs Reward Analysis - All Players',
-        labels={'Avg_Risk': 'Average Risk Score', 'Avg_Reward_per_Ball': 'Average Runs per Ball'},
-        color='Avg_Reward_per_Ball',
-        color_continuous_scale='RdYlGn'
-    )
-    st.plotly_chart(fig_risk, use_container_width=True)
-    
-    # Insights
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("🛡️ Safest Players")
-        safest = risk_reward.nsmallest(5, 'Avg_Risk')[['batsman', 'Avg_Risk', 'Avg_Reward_per_Ball']]
-        st.dataframe(safest, use_container_width=True)
-    
-    with col2:
-        st.subheader("🚀 Most Rewarding Players")
-        most_rewarding = risk_reward.nlargest(5, 'Avg_Reward_per_Ball')[['batsman', 'Avg_Reward_per_Ball', 'Avg_Risk']]
-        st.dataframe(most_rewarding, use_container_width=True)
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error loading data from GitHub: {e}")
+        return pd.DataFrame()
 
-with tab4:
-    st.header("🎳 Bowler Strength Analysis")
+def main():
+    """
+    Main function to run the Streamlit application.
+    """
+    st.markdown("<h1 style='text-align: center;'>Hundred Women's Tournament 🏏</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #6c757d;'>Comprehensive Data Analysis</p>", unsafe_allow_html=True)
+
+    # Load data
+    df = load_data_from_github(GITHUB_CSV_URL)
+
+    if df.empty:
+        st.warning("Could not load data. Please check the data source.")
+        return
+
+    # --- Sidebar Filters ---
+    st.sidebar.header("Filters")
     
-    if 'bowler' in df.columns:
-        # Bowler statistics
-        bowler_stats = df.groupby('bowler').agg({
-            'runs': ['sum', 'count'],
-            'batsman': 'count'  # balls bowled
-        }).round(2)
-        
-        bowler_stats.columns = ['Runs_Conceded', 'Balls_Bowled', 'Total_Deliveries']
-        bowler_stats = bowler_stats[bowler_stats['Balls_Bowled'] >= 10]  # Minimum 10 balls
-        
-        if len(bowler_stats) > 0:
-            # Calculate economy rate (runs per 6 balls)
-            bowler_stats['Economy_Rate'] = (bowler_stats['Runs_Conceded'] / bowler_stats['Balls_Bowled'] * 6).round(2)
-            
-            # Add pressure metric (percentage of dot balls)
-            bowler_pressure = df.groupby('bowler').agg({
-                'runs': lambda x: (x == 0).sum() / len(x) * 100  # Dot ball percentage
-            }).round(1)
-            bowler_pressure.columns = ['Dot_Ball_%']
-            
-            bowler_stats = bowler_stats.merge(bowler_pressure, left_index=True, right_index=True)
-            bowler_stats = bowler_stats.reset_index().sort_values('Economy_Rate')
-            
-            # Display best bowlers
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.subheader("🏆 Best Economy Rates")
-                best_economy = bowler_stats.head(10)[['bowler', 'Economy_Rate', 'Balls_Bowled']]
-                fig_economy = px.bar(
-                    best_economy,
-                    x='bowler',
-                    y='Economy_Rate',
-                    title='Top 10 Bowlers - Economy Rate',
-                    color='Economy_Rate',
-                    color_continuous_scale='RdYlGn_r'
-                )
-                fig_economy.update_layout(xaxis_tickangle=45)
-                st.plotly_chart(fig_economy, use_container_width=True)
-            
-            with col2:
-                st.subheader("🎯 Pressure Creators")
-                pressure_creators = bowler_stats.nlargest(10, 'Dot_Ball_%')[['bowler', 'Dot_Ball_%', 'Economy_Rate']]
-                fig_pressure = px.bar(
-                    pressure_creators,
-                    x='bowler',
-                    y='Dot_Ball_%',
-                    title='Top 10 Bowlers - Dot Ball Percentage',
-                    color='Dot_Ball_%',
-                    color_continuous_scale='Blues'
-                )
-                fig_pressure.update_layout(xaxis_tickangle=45)
-                st.plotly_chart(fig_pressure, use_container_width=True)
-            
-            # Overall bowler performance
-            st.subheader("📊 Complete Bowler Analysis")
-            
-            # Economy vs Pressure scatter
-            fig_bowler_scatter = px.scatter(
-                bowler_stats,
-                x='Dot_Ball_%',
-                y='Economy_Rate',
-                size='Balls_Bowled',
-                hover_name='bowler',
-                title='Bowler Performance: Pressure vs Economy',
-                labels={'Dot_Ball_%': 'Dot Ball Percentage', 'Economy_Rate': 'Economy Rate'},
-                color='Economy_Rate',
-                color_continuous_scale='RdYlGn_r'
-            )
-            st.plotly_chart(fig_bowler_scatter, use_container_width=True)
-            
-            # Detailed bowler stats table
-            st.subheader("Detailed Bowler Statistics")
-            st.dataframe(bowler_stats, use_container_width=True)
-        else:
-            st.info("Not enough bowling data available (minimum 10 balls required per bowler).")
+    # Date filter
+    min_date = df['matchDate'].min().date()
+    max_date = df['matchDate'].max().date()
+    date_range = st.sidebar.date_input(
+        "Select Date Range",
+        value=(min_date, max_date),
+        min_value=min_date,
+        max_value=max_date
+    )
+    
+    # Check if date_range is a tuple with two elements
+    if isinstance(date_range, tuple) and len(date_range) == 2:
+        start_date = pd.to_datetime(date_range[0])
+        end_date = pd.to_datetime(date_range[1])
+        filtered_df = df[(df['matchDate'] >= start_date) & (df['matchDate'] <= end_date)]
     else:
-        st.warning("No bowler data available in the dataset.")
+        # Handle cases where only one date is selected
+        filtered_df = df
+        
+    # Team filter
+    all_teams = sorted(filtered_df['battingTeam'].unique())
+    selected_teams = st.sidebar.multiselect(
+        "Select Teams",
+        options=all_teams,
+        default=all_teams
+    )
+    
+    if selected_teams:
+        filtered_df = filtered_df[filtered_df['battingTeam'].isin(selected_teams) | filtered_df['bowlingTeam'].isin(selected_teams)]
 
-# Footer
-st.markdown("---")
-st.markdown("**🏏 Hundred Women Cricket Analysis Dashboard** | Data from The Hundred Women's Competition")
+    if filtered_df.empty:
+        st.warning("No data available for the selected filters.")
+        return
+
+    # --- Tabs for different analysis sections ---
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "Home", 
+        "Batting Analysis", 
+        "Bowling Analysis", 
+        "Shot Analysis", 
+        "Match Explorer"
+    ])
+
+    with tab1:
+        st.header("Home Page: Tournament Summary")
+        
+        # Calculate summary KPIs
+        total_matches = filtered_df['fixtureId'].nunique()
+        total_runs = filtered_df['runsScored'].sum()
+        total_wickets = filtered_df['isWicket'].sum()
+        total_balls = filtered_df['totalBallNumber'].max()
+        
+        if total_balls > 0:
+            avg_run_rate = (total_runs / total_balls) * 6
+        else:
+            avg_run_rate = 0
+            
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Matches", total_matches)
+        with col2:
+            st.metric("Total Runs", int(total_runs))
+        with col3:
+            st.metric("Total Wickets", int(total_wickets))
+        with col4:
+            st.metric("Average Run Rate", f"{avg_run_rate:.2f}")
+
+    with tab2:
+        st.header("Batting Analysis")
+        
+        # Top run-scorers table
+        player_stats = filtered_df.groupby('batsman').agg(
+            Runs=('runsScored', 'sum'),
+            Balls=('runsScored', 'count'),
+            Boundaries=('isBoundry', 'sum')
+        ).reset_index()
+        
+        # Calculate strike rate and average
+        player_stats['Strike Rate'] = (player_stats['Runs'] / player_stats['Balls']) * 100
+        
+        # To calculate average, we need total outs which is tricky with this dataset,
+        # so we'll use a simple proxy or note the limitation
+        wickets_per_player = filtered_df[filtered_df['isWicket'] == 1].groupby('batsman').size()
+        player_stats = player_stats.set_index('batsman')
+        player_stats['Wickets'] = wickets_per_player
+        player_stats['Wickets'] = player_stats['Wickets'].fillna(0)
+        player_stats['Average'] = player_stats['Runs'] / player_stats['Wickets']
+        player_stats['Average'] = player_stats['Average'].replace([np.inf, -np.inf], np.nan).fillna(0)
+        player_stats = player_stats.reset_index()
+        
+        st.subheader("Top Run-Scorers")
+        st.dataframe(player_stats.sort_values('Runs', ascending=False), hide_index=True)
+
+        # Runs by phase bar chart
+        runs_by_phase = filtered_df.groupby(['batsman', 'match_phase'])['runsScored'].sum().reset_index()
+        runs_by_phase_fig = px.bar(
+            runs_by_phase,
+            x='batsman',
+            y='runsScored',
+            color='match_phase',
+            title="Runs by Match Phase per Player",
+            labels={'runsScored': 'Total Runs', 'batsman': 'Batsman'},
+            barmode='group'
+        )
+        st.plotly_chart(runs_by_phase_fig, use_container_width=True)
+        
+        # Boundaries per player bar chart
+        boundaries_df = player_stats.sort_values('Boundaries', ascending=False)
+        boundaries_fig = px.bar(
+            boundaries_df,
+            x='batsman',
+            y='Boundaries',
+            title="Boundaries per Player",
+            labels={'Boundaries': 'Total Boundaries', 'batsman': 'Batsman'}
+        )
+        st.plotly_chart(boundaries_fig, use_container_width=True)
+
+    with tab3:
+        st.header("Bowling Analysis")
+        
+        # Top wicket-takers table
+        bowler_stats = filtered_df.groupby('bowler').agg(
+            Wickets=('isWicket', 'sum'),
+            Balls=('isWicket', 'count'),
+            RunsConceded=('runsConceded', 'sum')
+        ).reset_index()
+        
+        # Calculate bowling average and economy rate
+        bowler_stats['Bowling Average'] = bowler_stats['RunsConceded'] / bowler_stats['Wickets']
+        bowler_stats['Bowling Average'] = bowler_stats['Bowling Average'].replace([np.inf, -np.inf], np.nan).fillna(0)
+        bowler_stats['Economy Rate'] = (bowler_stats['RunsConceded'] / bowler_stats['Balls']) * 6
+        
+        st.subheader("Top Wicket-Takers")
+        st.dataframe(bowler_stats.sort_values('Wickets', ascending=False), hide_index=True)
+        
+        # Dot ball percentage
+        dot_balls = filtered_df[(filtered_df['runsScored'] == 0) & (filtered_df['extras'] == 0)].groupby('bowler').size().reset_index(name='Dot Balls')
+        bowler_stats = bowler_stats.merge(dot_balls, on='bowler', how='left').fillna(0)
+        bowler_stats['Dot Ball Percentage'] = (bowler_stats['Dot Balls'] / bowler_stats['Balls']) * 100
+        
+        st.subheader("Dot Ball Percentage")
+        dot_ball_fig = px.bar(
+            bowler_stats.sort_values('Dot Ball Percentage', ascending=False),
+            x='bowler',
+            y='Dot Ball Percentage',
+            title="Dot Ball Percentage per Bowler",
+            labels={'bowler': 'Bowler', 'Dot Ball Percentage': 'Dot Ball %'}
+        )
+        st.plotly_chart(dot_ball_fig, use_container_width=True)
+        
+        # Scatter plot: Economy rate vs. Wickets
+        economy_wicket_fig = px.scatter(
+            bowler_stats,
+            x='Economy Rate',
+            y='Wickets',
+            hover_name='bowler',
+            title="Economy Rate vs. Wickets",
+            labels={'Economy Rate': 'Economy Rate', 'Wickets': 'Total Wickets'}
+        )
+        st.plotly_chart(economy_wicket_fig, use_container_width=True)
+
+    with tab4:
+        st.header("Shot Analysis")
+        
+        # Player filter for this tab
+        shot_players = sorted(filtered_df['batsman'].unique())
+        selected_shot_player = st.selectbox("Select Player for Shot Analysis", options=shot_players)
+        
+        if selected_shot_player:
+            player_shots_df = filtered_df[filtered_df['batsman'] == selected_shot_player].copy()
+            
+            # Wagon wheel plot
+            st.subheader(f"Wagon Wheel for {selected_shot_player}")
+            wagon_wheel_fig = px.scatter_polar(
+                player_shots_df,
+                r='shotMagnitude',
+                theta='shotAngle',
+                color='battingShotTypeId',
+                size='runsScored',
+                hover_data=['battingShotTypeId', 'runsScored'],
+                title=f"Shot Placement and Runs for {selected_shot_player}"
+            )
+            wagon_wheel_fig.update_layout(polar_angularaxis=dict(direction="clockwise", tickvals=np.arange(0, 361, 45)))
+            st.plotly_chart(wagon_wheel_fig, use_container_width=True)
+            
+            # Shot types with average runs table
+            shot_type_runs = player_shots_df.groupby('battingShotTypeId').agg(
+                TotalRuns=('runsScored', 'sum'),
+                TotalShots=('battingShotTypeId', 'count'),
+                AverageRuns=('runsScored', 'mean')
+            ).reset_index().sort_values('TotalRuns', ascending=False)
+            
+            st.subheader("Shot Types and Average Runs")
+            st.dataframe(shot_type_runs.round(2), hide_index=True)
+
+    with tab5:
+        st.header("Match Explorer")
+        
+        all_matches = sorted(filtered_df['fixtureId'].unique())
+        selected_match_id = st.selectbox("Select a Match", options=all_matches)
+        
+        if selected_match_id:
+            match_df = filtered_df[filtered_df['fixtureId'] == selected_match_id].copy()
+            
+            st.subheader("Ball-by-Ball Commentary")
+            st.dataframe(
+                match_df[['ballNumber', 'battingTeam', 'bowlingTeam', 'batsman', 'bowler', 'commentary', 'runsScored']],
+                hide_index=True
+            )
+            
+            # Cumulative runs over balls graph
+            st.subheader("Cumulative Runs Over Balls")
+            match_df['cumulative_runs_batting'] = match_df.groupby(['fixtureId', 'battingTeam'])['runsScored'].cumsum()
+            match_df['cumulative_runs_bowling'] = match_df.groupby(['fixtureId', 'bowlingTeam'])['runsConceded'].cumsum()
+            
+            # Get the two teams in the match
+            teams_in_match = match_df['battingTeam'].unique()
+            
+            fig = make_subplots(specs=[[{"secondary_y": True}]])
+            
+            for team in teams_in_match:
+                team_data = match_df[match_df['battingTeam'] == team]
+                fig.add_trace(go.Scatter(
+                    x=team_data['totalBallNumber'], 
+                    y=team_data['cumulative_runs_batting'],
+                    mode='lines+markers',
+                    name=f'{team} Runs'
+                ))
+            
+            fig.update_layout(
+                title_text="Cumulative Runs Over Balls",
+                xaxis_title="Ball Number",
+                yaxis_title="Total Runs"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+if __name__ == "__main__":
+    main()
