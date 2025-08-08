@@ -13,7 +13,7 @@ from collections import defaultdict
 
 # --- Set Page Configuration ---
 st.set_page_config(
-    page_title="Women's Cricket Shot Intelligence Matrix",
+    page_title="Hundred Women Shot Intelligence Matrix",
     page_icon="🏏",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -406,6 +406,124 @@ def get_player_insights(player_data):
     
     return insights
 
+# --- Data Visualization Functions ---
+def create_shot_angle_heatmap(df, player_name):
+    """Creates a polar heatmap to visualize shot angles for a player."""
+    player_data = df[df['batsman'] == player_name].copy()
+    if player_data.empty:
+        return go.Figure()
+
+    # Create a histogram of shot angles
+    angle_counts, angle_bins = np.histogram(player_data['shotAngle'], bins=36)
+    
+    # Create a polar chart
+    fig = go.Figure(go.Barpolar(
+        r=angle_counts,
+        theta=angle_bins[:-1],
+        width=10,
+        marker_color=px.colors.sequential.Plasma_r,
+        marker_line_color="black",
+        marker_line_width=1,
+        hoverinfo='r+theta',
+        hovertemplate="Angle: %{theta:.0f}°<br>Shots: %{r}<extra></extra>"
+    ))
+    
+    fig.update_layout(
+        title=f"Shot Angle Distribution for {player_name}",
+        polar_radialaxis_visible=True,
+        polar_angularaxis_visible=True,
+        polar_angularaxis=dict(
+            direction='clockwise',
+            tickvals=[0, 45, 90, 135, 180, 225, 270, 315],
+            ticktext=['Long Off', 'Cover', 'Point', 'Third Man', 'Fine Leg', 'Square Leg', 'Mid Wicket', 'Long On']
+        )
+    )
+    return fig
+
+def create_control_vs_aggression_chart(df):
+    """Creates a scatter plot for control vs aggression (runs)."""
+    if df.empty:
+        return go.Figure()
+
+    fig = px.scatter(
+        df,
+        x='runs',
+        y='control_score',
+        color='batsman',
+        hover_data=['battingShotTypeId', 'battingConnectionId'],
+        title='Player Performance: Control vs. Aggression (Runs Scored)',
+        labels={'runs': 'Runs Scored (Aggression)', 'control_score': 'Control Score'},
+        template='plotly_white'
+    )
+    return fig
+
+def create_match_phase_analysis(df):
+    """Creates a bar chart to compare player performance across match phases."""
+    if df.empty:
+        return go.Figure()
+        
+    df_grouped = df.groupby(['batsman', 'match_phase']).agg(
+        avg_control=('control_score', 'mean'),
+        avg_runs=('runs', 'mean'),
+        total_shots=('runs', 'count')
+    ).reset_index()
+
+    fig = px.bar(
+        df_grouped,
+        x='match_phase',
+        y='avg_control',
+        color='batsman',
+        barmode='group',
+        title='Average Control Score Across Match Phases',
+        labels={'avg_control': 'Average Control Score', 'match_phase': 'Match Phase'},
+        hover_data=['avg_runs', 'total_shots'],
+        template='plotly_white'
+    )
+    return fig
+
+def create_player_comparison_radar(df, players):
+    """Creates a radar chart to compare multiple players on key metrics."""
+    if df.empty or len(players) < 2:
+        return go.Figure()
+    
+    metrics_df = df[df['batsman'].isin(players)].groupby('batsman').agg(
+        avg_control=('control_score', 'mean'),
+        avg_runs=('runs', 'mean'),
+        boundary_rate=('is_boundary', 'mean'),
+        false_shot_rate=('false_shot_score', lambda x: (x > 0).mean())
+    ).reset_index()
+
+    metrics_df['boundary_rate'] = metrics_df['boundary_rate'] * 100
+    
+    fig = go.Figure()
+    for player in players:
+        player_data = metrics_df[metrics_df['batsman'] == player]
+        if not player_data.empty:
+            r_values = [
+                player_data['avg_control'].values[0],
+                player_data['avg_runs'].values[0] * 10, # Scaling for better visualization
+                player_data['boundary_rate'].values[0],
+                100 - (player_data['false_shot_rate'].values[0] * 100) # Inverting false shot rate to show a positive "safety" metric
+            ]
+            fig.add_trace(go.Scatterpolar(
+                r=r_values,
+                theta=['Control Score', 'Runs per Ball', 'Boundary Rate', 'Shot Safety'],
+                fill='toself',
+                name=player
+            ))
+    
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100]
+            )
+        ),
+        title='Player Comparison on Key Metrics',
+        showlegend=True
+    )
+    return fig
+
 def create_player_form_chart(df, player_name):
     """Creates a line chart for a player's form based on a rolling control score."""
     player_data = df[df['batsman'] == player_name].sort_values('matchDate')
@@ -461,6 +579,46 @@ def create_shot_cluster_chart(df, player_name):
             angularaxis=dict(direction="clockwise")
         ),
         showlegend=True
+    )
+    return fig
+
+def create_pressure_performance_analysis(df):
+    """Creates a scatter plot of control score vs. false shot score."""
+    if df.empty:
+        return go.Figure()
+
+    fig = px.scatter(
+        df,
+        x='false_shot_score',
+        y='control_score',
+        color='batsman',
+        hover_data=['battingShotTypeId', 'battingConnectionId'],
+        title='Pressure Performance: Control Score vs. False Shot Score',
+        labels={'false_shot_score': 'False Shot Score (Risk)', 'control_score': 'Control Score'},
+        template='plotly_white'
+    )
+    return fig
+
+def create_wicket_probability_heatmap(df):
+    """Creates a heatmap of wicket probability by match phase and connection type."""
+    if df.empty or 'match_phase' not in df.columns or 'battingConnectionId' not in df.columns:
+        return go.Figure()
+
+    wicket_prob_df = df.groupby(['match_phase', 'battingConnectionId'])['isWicket'].mean().reset_index()
+    wicket_prob_df['isWicket'] = wicket_prob_df['isWicket'] * 100
+    
+    pivot_df = wicket_prob_df.pivot_table(
+        index='battingConnectionId', 
+        columns='match_phase', 
+        values='isWicket'
+    ).fillna(0)
+
+    fig = px.imshow(
+        pivot_df,
+        text_auto=True,
+        aspect="auto",
+        labels=dict(x="Match Phase", y="Connection Type", color="Wicket Probability (%)"),
+        title="Wicket Probability by Connection Type and Match Phase"
     )
     return fig
 
@@ -597,7 +755,7 @@ else:
                 st.info("Please select only one player for xRuns analysis.")
         
         with adv_tab2:
-            st.markdown("##### ⚡ Performance Under Pressure")
+            st.markdown("##### ⚡ Pressure Performance")
             pressure_fig = create_pressure_performance_analysis(filtered_df)
             st.plotly_chart(pressure_fig, use_container_width=True)
         
