@@ -195,7 +195,6 @@ def create_sample_data():
         'bowlingTypeId': np.random.choice(bowling_types, n_rows),
         'bowlingFromId': np.random.choice(bowling_from, n_rows),
         'bowlingHandId': np.random.choice(bowling_hands, n_rows),
-        'pitch_condition': np.random.choice(['Flat', 'Green Seamer', 'Slow Turner'], n_rows),
         'match_situation': np.random.choice(['Powerplay', 'Middle Overs', 'Death Overs'], n_rows)
     }
     
@@ -482,7 +481,6 @@ else:
     all_players = sorted(df['batsman'].unique())
     all_bowlers = sorted(df['bowler'].unique())
     all_seasons = sorted(df['season'].unique())
-    all_pitch_conditions = sorted(df['pitch_condition'].unique())
     
     st.markdown("<h1 class='main-header'>Women's Cricket Shot Intelligence Matrix 🏏</h1>", unsafe_allow_html=True)
     st.sidebar.header("Player and Match Selection")
@@ -498,12 +496,10 @@ else:
         st.stop()
     
     selected_season = st.sidebar.multiselect("Filter by Season", options=all_seasons, default=all_seasons)
-    selected_pitch = st.sidebar.multiselect("Filter by Pitch Condition", options=all_pitch_conditions, default=all_pitch_conditions)
     
     filtered_df = df[
         df['batsman'].isin(selected_players) &
-        df['season'].isin(selected_season) &
-        df['pitch_condition'].isin(selected_pitch)
+        df['season'].isin(selected_season)
     ]
 
     tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
