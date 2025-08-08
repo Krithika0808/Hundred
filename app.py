@@ -9,12 +9,12 @@ from io import StringIO
 from datetime import datetime
 
 # Set page config
-st.set_config({
-    "page_title": "Women's Cricket Shot Intelligence Matrix",
-    "page_icon": "🏏",
-    "layout": "wide",
-    "initial_sidebar_state": "expanded"
-})
+st.set_page_config(
+    page_title="Women's Cricket Shot Intelligence Matrix",
+    page_icon="🏏",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 # Custom CSS for better styling
 st.markdown("""
@@ -1203,3 +1203,4 @@ else:
             
             except Exception as e:
                 st.error(f"Error in false shot analysis: {e}")
+
