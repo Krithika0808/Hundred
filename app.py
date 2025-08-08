@@ -68,170 +68,77 @@ st.markdown("""
     .insight-title {
         font-weight: bold;
         color: #495057;
-        margin-bottom: 0.5rem;
+        margin-bottom: 0.5rem;import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import requests
+from io import StringIO
+from datetime import datetime
+
+# Set page config
+st.set_page_config(
+    page_title="Women's Cricket Shot Intelligence Matrix",
+    page_icon="🏏",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Custom CSS for better styling
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #1f77b4;
+        text-align: center;
+        margin-bottom: 2rem;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
     }
-    .insight-content {
-        color: #6c757d;
-        font-size: 0.95rem;
-    }
-    .bowling-recommendation {
-        background-color: #f8f9fa;
-        padding: 0.5rem;
-        border-radius: 0.375rem;
-        margin-top: 0.5rem;
-        border-left: 3px solid #dc3545;
-    }
-    .recommendation-item {
-        margin-bottom: 0.25rem;
-        font-size: 0.9rem;
-    }
-    .connection-note {
-        font-style: italic;
-        color: #6c757d;
-        font-size: 0.85rem;
-        margin-top: 0.25rem;
-    }
-    .advanced-metric {
-        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border: 1px solid #2196f3;
+    .metric-card {
+        background: linear-gradient(135deg, #f0f2f6 0%, #e8f4fd 100%);
+        padding: 1.5rem;
+        border-radius: 0.75rem;
+        border-left: 4px solid #1f77b4;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         margin: 0.5rem 0;
     }
-</style>
-""", unsafe_allow_html=True)
-
-
-@st.cache_data
-def load_data_from_github(github_url=None):
-    """Load cricket data from GitHub repository"""
-    try:
-        if github_url is None:
-            github_url = "https://raw.githubusercontent.com/Krithika0808/Hundred/main/Hundred.csv"
-        
-        response = requests.get(github_url)
-        response.raise_for_status() 
-        
-        csv_content = StringIO(response.text)
-        df = pd.read_csv(csv_content)
-        
-        if df.empty:
-            return df
-            
-        numeric_columns = ['shotAngle', 'shotMagnitude', 'runs', 'totalBallNumber']
-        for col in numeric_columns:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-        
-        bool_columns = ['isWicket', 'isBoundary', 'isAirControlled', 'isWide', 'isNoBall']
-        for col in bool_columns:
-            if col in df.columns:
-                df[col] = df[col].astype(bool)
-        
-        string_columns = ['batsman', 'bowler', 'battingShotTypeId', 'battingConnectionId', 'commentary']
-        for col in string_columns:
-            if col in df.columns:
-                df[col] = df[col].astype(str).str.strip()
-        
-        essential_columns = [col for col in ['batsman', 'runs', 'totalBallNumber'] if col in df.columns]
-        if essential_columns:
-            df = df.dropna(subset=essential_columns)
-        
-        if 'matchDate' in df.columns:
-            df['matchDate'] = pd.to_datetime(df['matchDate'], errors='coerce')
-            df['season'] = df['matchDate'].dt.year
-        
-        return df
-        
-    except requests.exceptions.RequestException as e:
-        st.error(f"❌ Error fetching data from GitHub: {str(e)}")
-        st.info("Creating sample data for demonstration...")
-        return create_sample_data()
-    except Exception as e:
-        st.error(f"❌ Error processing data: {str(e)}")
-        st.info("Creating sample data for demonstration...")
-        return create_sample_data()
-
-def create_sample_data():
-    """Create sample cricket data for demonstration"""
-    np.random.seed(42)
-    
-    players = ['Smriti Mandhana', 'Harmanpreet Kaur', 'Beth Mooney', 'Alyssa Healy', 'Meg Lanning']
-    bowlers = ['Jess Jonassen', 'Sophie Ecclestone', 'Ashleigh Gardner', 'Shabnim Ismail', 'Marizanne Kapp']
-    shot_types = ['Drive', 'Pull', 'Cut', 'Sweep', 'Flick', 'Hook', 'Reverse Sweep', 'Loft']
-    connection_types = ['Middled', 'WellTimed', 'Undercontrol', 'MisTimed', 'Missed', 'HitBody']
-    
-    length_types = ['Yorker', 'Full', 'Good Length', 'Short', 'Bouncer']
-    line_types = ['Off Stump', 'Middle Stump', 'Leg Stump', 'Wide Outside Off', 'DownLeg']
-    bowling_types = ['Fast', 'Medium', 'Spin', 'Swing', 'Seam']
-    bowling_from = ['Over the Wicket', 'Around the Wicket']
-    bowling_hands = ['Right Arm', 'Left Arm']
-    
-    n_rows = 1000
-    
-    data = {
-        'batsman': np.random.choice(players, n_rows),
-        'bowler': np.random.choice(bowlers, n_rows),
-        'battingShotTypeId': np.random.choice(shot_types, n_rows),
-        'battingConnectionId': np.random.choice(connection_types, n_rows, p=[0.3, 0.25, 0.2, 0.15, 0.05, 0.05]),
-        'runs': np.random.choice([0, 1, 2, 3, 4, 6], n_rows, p=[0.3, 0.25, 0.2, 0.1, 0.1, 0.05]),
-        'totalBallNumber': np.random.randint(1, 101, n_rows),
-        'shotAngle': np.random.uniform(0, 360, n_rows),
-        'shotMagnitude': np.random.uniform(50, 200, n_rows),
-        'isAirControlled': np.random.choice([True, False], n_rows, p=[0.3, 0.7]),
-        'isBoundary': np.random.choice([True, False], n_rows, p=[0.15, 0.85]),
-        'isWicket': np.random.choice([True, False], n_rows, p=[0.05, 0.95]),
-        'commentary': ['Good shot!', 'Excellent timing!', 'Mistimed!', 'Great connection!'] * (n_rows // 4),
-        'fixtureId': np.random.randint(1, 21, n_rows),
-        'battingTeam': np.random.choice(['Team A', 'Team B', 'Team C', 'Team D'], n_rows),
-        'matchDate': pd.to_datetime(pd.to_datetime('2023-01-01') + pd.to_timedelta(np.random.randint(0, 365, n_rows), unit='d')),
-        'lengthTypeId': np.random.choice(length_types, n_rows),
-        'lineTypeId': np.random.choice(line_types, n_rows),
-        'bowlingTypeId': np.random.choice(bowling_types, n_rows),
-        'bowlingFromId': np.random.choice(bowling_from, n_rows),
-        'bowlingHandId': np.random.choice(bowling_hands, n_rows)
+    .insight-box {
+        background: linear-gradient(135deg, #e8f4fd 0%, #f0f8ff 100%);
+        padding: 1.5rem;
+        border-radius: 0.75rem;
+        border: 2px solid #1f77b4;
+        margin: 1rem 0;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
-    
-    df = pd.DataFrame(data)
-    
-    df.loc[df['runs'] == 4, 'isBoundary'] = True
-    df.loc[df['runs'] == 6, 'isBoundary'] = True
-    df.loc[df['runs'] < 4, 'isBoundary'] = False
-    
-    def generate_commentary(row):
-        if row['runs'] == 6:
-            return f"SIX! {row['battingShotTypeId']} shot for maximum!"
-        elif row['runs'] == 4:
-            return f"FOUR! Beautiful {row['battingShotTypeId']} to the boundary!"
-        elif row['battingConnectionId'] == 'Middled':
-            return f"Perfect {row['battingShotTypeId']} shot!"
-        elif row['battingConnectionId'] == 'MisTimed':
-            return f"Mistimed {row['battingShotTypeId']}"
-        else:
-            return f"{row['battingShotTypeId']} shot for {row['runs']} runs"
-    
-    df['commentary'] = df.apply(generate_commentary, axis=1)
-    
-    return df
-
-
-def false_shot_score(connection_id):
-    """Calculate false shot score based on batting connection"""
-    false_shot_mapping = {
-        'Middled': 0,
-        'WellTimed': 0,
-        'Undercontrol': 0,
-        'Left': 0,
-        'MisTimed': 3,
-        'Mis-timed': 3,
-        'BottomEdge': 4,
-        'TopEdge': 4,
-        'BatPad': 4,
-        'InsideEdge': 3,
-        'LeadingEdge': 4,
-        'OutsideEdge': 3,
-        'Gloved': 3,
-        'ThickEdge': 3,
+    .player-card {
+        background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%);
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border: 1px solid #dee2e6;
+        margin: 0.5rem 0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .stMetric > div[data-testid="metric-container"] {
+        background-color: rgba(255,255,255,0.05);
+        border: 1px solid rgba(49,51,63,0.2);
+        padding: 0.5rem;
+        border-radius: 0.5rem;
+    }
+    .insight-card {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        padding: 1.5rem;
+        border-radius: 0.75rem;
+        border: 1px solid #dee2e6;
+        margin: 1rem 0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .insight-title {
+        font-weight: bold;
+        color: #495057;
+        margin-bottom: 0.5rem;        'ThickEdge': 3,
         'Missed': 5,
         'PlayAndMiss': 5,
         'PlayAndMissLegSide': 5,
@@ -1331,5 +1238,6 @@ else:
 
         except Exception as e:
             st.error(f"An error occurred: {e}")
+
 
 
