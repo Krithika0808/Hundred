@@ -1,13 +1,16 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime, date
-import warnings
-warnings.filterwarnings('ignore')
+from plotly.subplots import make_subplots
+import requests
+from io import StringIO
+from datetime import datetime
+import numpy as np
 
-# Page configuration
+# --- Configuration and Data Loading ---
+
+# Set Streamlit page configuration
 st.set_page_config(
     page_title="Hundred Women's Cricket Analysis",
     page_icon="🏏",
@@ -15,468 +18,314 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better styling
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 3rem;
-        font-weight: bold;
-        color: #FF6B35;
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    .kpi-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        text-align: center;
-        margin: 0.5rem 0;
-    }
-    .tab-header {
-        font-size: 1.5rem;
-        font-weight: bold;
-        color: #2E4057;
-        margin-bottom: 1rem;
-    }
-</style>
-""", unsafe_allow_html=True)
+# URL for the raw CSV data on GitHub
+GITHUB_CSV_URL = "https://raw.githubusercontent.com/Krithika0808/Hundred/main/Hundred.csv"
 
 @st.cache_data
-def load_data():
-    """Load cricket data from GitHub repository"""
+def load_data_from_github(url):
+    """
+    Loads cricket data from a public GitHub repository.
+    Uses requests to fetch the raw CSV content and pandas to read it.
+    """
     try:
-        # GitHub raw URL for the CSV file
-        url = "https://raw.githubusercontent.com/Krithika0808/Hundred/main/Hundred.csv"
-        df = pd.read_csv(url)
+        response = requests.get(url)
+        response.raise_for_status()  # Check for HTTP errors
         
-        # Data cleaning and preprocessing
-        # Convert date columns
+        csv_content = StringIO(response.text)
+        df = pd.read_csv(csv_content)
+        
+        # --- Data Cleaning and Preprocessing ---
+        
+        # Check for essential columns to prevent KeyErrors later
+        required_cols = ['matchDate', 'runs', 'isWicket', 'overNumber', 'totalBallNumber', 
+                         'runsConceded', 'shotAngle', 'shotMagnitude', 'runsScored', 
+                         'extras', 'runsWide', 'runsByes', 'runsLegByes', 'batsman', 
+                         'bowler', 'battingTeam', 'bowlingTeam', 'battingShotTypeId', 'isBoundary']
+        
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            st.error(f"The following required columns are missing from the dataset: {', '.join(missing_cols)}")
+            return pd.DataFrame()
+
+        # Convert date column to datetime objects
         df['matchDate'] = pd.to_datetime(df['matchDate'], errors='coerce')
-        df['ballDateTime'] = pd.to_datetime(df['ballDateTime'], errors='coerce')
         
-        # Convert numeric columns
-        numeric_cols = ['runs', 'shotAngle', 'shotMagnitude', 'runrate', 'totalBallNumber', 
-                       'ballNumber', 'overNumber', 'totalInningRuns', 'totalInningWickets']
+        # Ensure key numeric columns have the correct type
+        numeric_cols = ['runs', 'isWicket', 'overNumber', 'totalBallNumber', 'runsConceded',
+                        'shotAngle', 'shotMagnitude', 'runsScored', 'extras', 'runsWide', 'runsByes', 'runsLegByes']
         for col in numeric_cols:
             if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         
-        # Convert boolean columns
-        bool_cols = ['isWicket', 'isBoundry', 'isWide', 'isNoBall', 'isPowerPlay']
-        for col in bool_cols:
+        # Fill missing string data with 'Unknown'
+        string_cols = ['batsman', 'bowler', 'battingTeam', 'bowlingTeam', 'battingShotTypeId']
+        for col in string_cols:
             if col in df.columns:
-                df[col] = df[col].astype(bool)
+                df[col] = df[col].fillna('Unknown')
         
-        # Fill missing values
-        df['batsman'] = df['batsman'].fillna('Unknown')
-        df['bowler'] = df['bowler'].fillna('Unknown')
-        df['runs'] = df['runs'].fillna(0)
+        # Create a `match_phase` column based on ball number
+        df['match_phase'] = df['totalBallNumber'].apply(lambda x: 
+            'Powerplay' if x <= 25 else ('Middle Overs' if x <= 75 else 'Death Overs')
+        )
         
         return df
-    except Exception as e:
-        st.error(f"Error loading data: {str(e)}")
+
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error loading data from GitHub: {e}")
         return pd.DataFrame()
 
-def create_match_phase(row):
-    """Determine match phase based on ball number"""
-    if pd.isna(row['totalBallNumber']):
-        return 'Unknown'
-    
-    ball_num = row['totalBallNumber']
-    if ball_num <= 25:  # First 25 balls (Powerplay in T20)
-        return 'Powerplay'
-    elif ball_num <= 75:  # Middle overs
-        return 'Middle'
-    else:  # Death overs
-        return 'Death'
-
 def main():
-    """Main application function"""
-    
+    """
+    Main function to run the Streamlit application.
+    """
+    st.markdown("<h1 style='text-align: center;'>Hundred Women's Tournament 🏏</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #6c757d;'>Comprehensive Data Analysis</p>", unsafe_allow_html=True)
+
     # Load data
-    with st.spinner("Loading Hundred Women's Cricket data..."):
-        df = load_data()
-    
+    df = load_data_from_github(GITHUB_CSV_URL)
+
     if df.empty:
-        st.error("Failed to load data. Please check the data source.")
+        st.warning("Could not load data. Please check the data source.")
         return
-    
-    # Add match phase column
-    df['match_phase'] = df.apply(create_match_phase, axis=1)
-    
-    # Main title
-    st.markdown("<h1 class='main-header'>🏏 Hundred Women's Cricket Analysis Dashboard</h1>", 
-                unsafe_allow_html=True)
-    
-    # Sidebar filters
-    st.sidebar.header("🔧 Filters")
+
+    # --- Sidebar Filters ---
+    st.sidebar.header("Filters")
     
     # Date filter
-    if not df['matchDate'].isna().all():
-        date_range = st.sidebar.date_input(
-            "Select Date Range",
-            value=(df['matchDate'].min().date(), df['matchDate'].max().date()),
-            min_value=df['matchDate'].min().date(),
-            max_value=df['matchDate'].max().date()
-        )
-        
-        # Apply date filter
-        if len(date_range) == 2:
-            start_date, end_date = date_range
-            df_filtered = df[
-                (df['matchDate'].dt.date >= start_date) & 
-                (df['matchDate'].dt.date <= end_date)
-            ]
-        else:
-            df_filtered = df.copy()
-    else:
-        df_filtered = df.copy()
-    
-    # Team filter
-    teams = sorted([team for team in df_filtered['battingTeam'].unique() if pd.notna(team)])
-    selected_teams = st.sidebar.multiselect(
-        "Select Teams",
-        options=teams,
-        default=teams
+    min_date = df['matchDate'].min().date()
+    max_date = df['matchDate'].max().date()
+    date_range = st.sidebar.date_input(
+        "Select Date Range",
+        value=(min_date, max_date),
+        min_value=min_date,
+        max_value=max_date
     )
     
-    # Apply team filter
+    # Check if date_range is a tuple with two elements
+    if isinstance(date_range, tuple) and len(date_range) == 2:
+        start_date = pd.to_datetime(date_range[0])
+        end_date = pd.to_datetime(date_range[1])
+        filtered_df = df[(df['matchDate'] >= start_date) & (df['matchDate'] <= end_date)]
+    else:
+        # Handle cases where only one date is selected
+        filtered_df = df
+        
+    # Team filter
+    all_teams = sorted(filtered_df['battingTeam'].unique())
+    selected_teams = st.sidebar.multiselect(
+        "Select Teams",
+        options=all_teams,
+        default=all_teams
+    )
+    
     if selected_teams:
-        df_filtered = df_filtered[df_filtered['battingTeam'].isin(selected_teams)]
-    
-    st.sidebar.markdown(f"**Data Points:** {len(df_filtered):,}")
-    
-    # Create tabs
+        filtered_df = filtered_df[filtered_df['battingTeam'].isin(selected_teams) | filtered_df['bowlingTeam'].isin(selected_teams)]
+
+    if filtered_df.empty:
+        st.warning("No data available for the selected filters.")
+        return
+
+    # --- Tabs for different analysis sections ---
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "🏠 Home", 
-        "🏏 Batting Analysis", 
-        "🎳 Bowling Analysis", 
-        "🎯 Shot Analysis", 
-        "📊 Match Explorer"
+        "Home", 
+        "Batting Analysis", 
+        "Bowling Analysis", 
+        "Shot Analysis", 
+        "Match Explorer"
     ])
-    
-    # HOME PAGE
+
     with tab1:
-        st.markdown("<div class='tab-header'>Tournament Overview</div>", unsafe_allow_html=True)
+        st.header("Home Page: Tournament Summary")
         
-        # KPI Metrics
+        # Calculate summary KPIs
+        total_matches = filtered_df['fixtureId'].nunique()
+        total_runs = filtered_df['runsScored'].sum()
+        total_wickets = filtered_df['isWicket'].sum()
+        total_balls = filtered_df['totalBallNumber'].max()
+        
+        if total_balls > 0:
+            avg_run_rate = (total_runs / total_balls) * 6
+        else:
+            avg_run_rate = 0
+            
         col1, col2, col3, col4 = st.columns(4)
-        
         with col1:
-            total_matches = df_filtered['fixtureId'].nunique()
-            st.metric("Total Matches", f"{total_matches:,}")
-        
+            st.metric("Total Matches", total_matches)
         with col2:
-            total_runs = int(df_filtered['runs'].sum())
-            st.metric("Total Runs", f"{total_runs:,}")
-        
+            st.metric("Total Runs", int(total_runs))
         with col3:
-            total_wickets = int(df_filtered['isWicket'].sum())
-            st.metric("Total Wickets", f"{total_wickets:,}")
-        
+            st.metric("Total Wickets", int(total_wickets))
         with col4:
-            avg_run_rate = df_filtered['runrate'].mean()
             st.metric("Average Run Rate", f"{avg_run_rate:.2f}")
-        
-        # Tournament insights
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("📈 Runs Trend by Date")
-            if not df_filtered['matchDate'].isna().all():
-                daily_runs = df_filtered.groupby(df_filtered['matchDate'].dt.date)['runs'].sum().reset_index()
-                fig_trend = px.line(
-                    daily_runs, 
-                    x='matchDate', 
-                    y='runs',
-                    title='Daily Runs Scored',
-                    labels={'runs': 'Total Runs', 'matchDate': 'Date'}
-                )
-                st.plotly_chart(fig_trend, use_container_width=True)
-            else:
-                st.info("Date information not available for trend analysis")
-        
-        with col2:
-            st.subheader("🏟️ Runs by Team")
-            team_runs = df_filtered.groupby('battingTeam')['runs'].sum().sort_values(ascending=True)
-            fig_team = px.bar(
-                x=team_runs.values,
-                y=team_runs.index,
-                orientation='h',
-                title='Total Runs by Team',
-                labels={'x': 'Total Runs', 'y': 'Team'}
-            )
-            st.plotly_chart(fig_team, use_container_width=True)
-    
-    # BATTING ANALYSIS
+
     with tab2:
-        st.markdown("<div class='tab-header'>🏏 Batting Performance Analysis</div>", unsafe_allow_html=True)
+        st.header("Batting Analysis")
         
-        # Top run-scorers
-        col1, col2 = st.columns(2)
+        # Top run-scorers table
+        player_stats = filtered_df.groupby('batsman').agg(
+            Runs=('runsScored', 'sum'),
+            Balls=('runsScored', 'count'),
+            Boundaries=('isBoundary', 'sum')
+        ).reset_index()
         
-        with col1:
-            st.subheader("🏆 Top Run Scorers")
-            batting_stats = df_filtered.groupby('batsman').agg({
-                'runs': ['sum', 'count', 'mean'],
-                'isBoundry': 'sum'
-            }).round(2)
-            
-            batting_stats.columns = ['Total_Runs', 'Balls_Faced', 'Average', 'Boundaries']
-            batting_stats['Strike_Rate'] = (batting_stats['Total_Runs'] / batting_stats['Balls_Faced'] * 100).round(2)
-            batting_stats = batting_stats.sort_values('Total_Runs', ascending=False).head(10)
-            
-            st.dataframe(batting_stats, use_container_width=True)
+        # Calculate strike rate and average
+        player_stats['Strike Rate'] = (player_stats['Runs'] / player_stats['Balls']) * 100
         
-        with col2:
-            st.subheader("📊 Strike Rate vs Average")
-            if len(batting_stats) > 0:
-                fig_batting = px.scatter(
-                    batting_stats.reset_index(),
-                    x='Average',
-                    y='Strike_Rate',
-                    size='Total_Runs',
-                    hover_name='batsman',
-                    title='Batting Performance Matrix',
-                    labels={'Average': 'Batting Average', 'Strike_Rate': 'Strike Rate'}
-                )
-                st.plotly_chart(fig_batting, use_container_width=True)
+        # To calculate average, we need total outs which is tricky with this dataset,
+        # so we'll use a simple proxy or note the limitation
+        wickets_per_player = filtered_df[filtered_df['isWicket'] == 1].groupby('batsman').size()
+        player_stats = player_stats.set_index('batsman')
+        player_stats['Wickets'] = wickets_per_player
+        player_stats['Wickets'] = player_stats['Wickets'].fillna(0)
+        player_stats['Average'] = player_stats['Runs'] / player_stats['Wickets']
+        player_stats['Average'] = player_stats['Average'].replace([np.inf, -np.inf], np.nan).fillna(0)
+        player_stats = player_stats.reset_index()
         
-        # Runs by match phase
-        st.subheader("⏱️ Runs by Match Phase")
-        phase_runs = df_filtered.groupby(['batsman', 'match_phase'])['runs'].sum().reset_index()
+        st.subheader("Top Run-Scorers")
+        st.dataframe(player_stats.sort_values('Runs', ascending=False), hide_index=True)
+
+        # Runs by phase bar chart
+        runs_by_phase = filtered_df.groupby(['batsman', 'match_phase'])['runsScored'].sum().reset_index()
+        runs_by_phase_fig = px.bar(
+            runs_by_phase,
+            x='batsman',
+            y='runsScored',
+            color='match_phase',
+            title="Runs by Match Phase per Player",
+            labels={'runsScored': 'Total Runs', 'batsman': 'Batsman'},
+            barmode='group'
+        )
+        st.plotly_chart(runs_by_phase_fig, use_container_width=True)
         
-        # Select top batsmen for phase analysis
-        top_batsmen = df_filtered.groupby('batsman')['runs'].sum().nlargest(8).index.tolist()
-        phase_runs_filtered = phase_runs[phase_runs['batsman'].isin(top_batsmen)]
-        
-        if not phase_runs_filtered.empty:
-            fig_phase = px.bar(
-                phase_runs_filtered,
-                x='batsman',
-                y='runs',
-                color='match_phase',
-                title='Runs Distribution by Match Phase (Top 8 Batsmen)',
-                labels={'runs': 'Total Runs', 'batsman': 'Batsman'}
-            )
-            fig_phase.update_layout(xaxis_tickangle=45)
-            st.plotly_chart(fig_phase, use_container_width=True)
-        
-        # Boundaries analysis
-        st.subheader("🎯 Boundary Analysis")
-        boundary_stats = df_filtered[df_filtered['isBoundry'] == True].groupby('batsman').size().sort_values(ascending=False).head(10)
-        
-        if not boundary_stats.empty:
-            fig_boundaries = px.bar(
-                x=boundary_stats.index,
-                y=boundary_stats.values,
-                title='Top 10 Boundary Hitters',
-                labels={'x': 'Batsman', 'y': 'Total Boundaries'}
-            )
-            fig_boundaries.update_layout(xaxis_tickangle=45)
-            st.plotly_chart(fig_boundaries, use_container_width=True)
-    
-    # BOWLING ANALYSIS
+        # Boundaries per player bar chart
+        boundaries_df = player_stats.sort_values('Boundaries', ascending=False)
+        boundaries_fig = px.bar(
+            boundaries_df,
+            x='batsman',
+            y='Boundaries',
+            title="Boundaries per Player",
+            labels={'Boundaries': 'Total Boundaries', 'batsman': 'Batsman'}
+        )
+        st.plotly_chart(boundaries_fig, use_container_width=True)
+
     with tab3:
-        st.markdown("<div class='tab-header'>🎳 Bowling Performance Analysis</div>", unsafe_allow_html=True)
+        st.header("Bowling Analysis")
         
-        col1, col2 = st.columns(2)
+        # Top wicket-takers table
+        bowler_stats = filtered_df.groupby('bowler').agg(
+            Wickets=('isWicket', 'sum'),
+            Balls=('isWicket', 'count'),
+            RunsConceded=('runsConceded', 'sum')
+        ).reset_index()
         
-        with col1:
-            st.subheader("🏆 Top Wicket Takers")
-            # Calculate bowling statistics
-            bowling_stats = df_filtered.groupby('bowler').agg({
-                'isWicket': 'sum',
-                'runs': 'sum',
-                'batsman': 'count'  # balls bowled
-            }).round(2)
-            
-            bowling_stats.columns = ['Wickets', 'Runs_Conceded', 'Balls_Bowled']
-            bowling_stats = bowling_stats[bowling_stats['Balls_Bowled'] >= 10]  # Minimum 10 balls
-            
-            # Calculate economy rate (runs per 6 balls)
-            bowling_stats['Economy_Rate'] = (bowling_stats['Runs_Conceded'] / bowling_stats['Balls_Bowled'] * 6).round(2)
-            
-            # Calculate bowling average (runs per wicket)
-            bowling_stats['Bowling_Average'] = (bowling_stats['Runs_Conceded'] / bowling_stats['Wickets']).round(2)
-            bowling_stats['Bowling_Average'] = bowling_stats['Bowling_Average'].replace([np.inf], 999)
-            
-            top_bowlers = bowling_stats.sort_values('Wickets', ascending=False).head(10)
-            st.dataframe(top_bowlers, use_container_width=True)
+        # Calculate bowling average and economy rate
+        bowler_stats['Bowling Average'] = bowler_stats['RunsConceded'] / bowler_stats['Wickets']
+        bowler_stats['Bowling Average'] = bowler_stats['Bowling Average'].replace([np.inf, -np.inf], np.nan).fillna(0)
+        bowler_stats['Economy Rate'] = (bowler_stats['RunsConceded'] / bowler_stats['Balls']) * 6
         
-        with col2:
-            st.subheader("💹 Economy Rate vs Wickets")
-            if len(top_bowlers) > 0:
-                fig_bowling = px.scatter(
-                    top_bowlers.reset_index(),
-                    x='Economy_Rate',
-                    y='Wickets',
-                    size='Balls_Bowled',
-                    hover_name='bowler',
-                    title='Bowling Performance Matrix',
-                    labels={'Economy_Rate': 'Economy Rate', 'Wickets': 'Total Wickets'}
-                )
-                st.plotly_chart(fig_bowling, use_container_width=True)
+        st.subheader("Top Wicket-Takers")
+        st.dataframe(bowler_stats.sort_values('Wickets', ascending=False), hide_index=True)
         
-        # Dot ball analysis
-        st.subheader("🎯 Dot Ball Analysis")
-        dot_balls = df_filtered.groupby('bowler').agg({
-            'runs': lambda x: (x == 0).sum(),  # Count dot balls
-            'batsman': 'count'  # Total balls
-        })
-        dot_balls.columns = ['Dot_Balls', 'Total_Balls']
-        dot_balls = dot_balls[dot_balls['Total_Balls'] >= 10]
-        dot_balls['Dot_Ball_Percentage'] = (dot_balls['Dot_Balls'] / dot_balls['Total_Balls'] * 100).round(1)
+        # Dot ball percentage
+        dot_balls = filtered_df[(filtered_df['runsScored'] == 0) & (filtered_df['extras'] == 0)].groupby('bowler').size().reset_index(name='Dot Balls')
+        bowler_stats = bowler_stats.merge(dot_balls, on='bowler', how='left').fillna(0)
+        bowler_stats['Dot Ball Percentage'] = (bowler_stats['Dot Balls'] / bowler_stats['Balls']) * 100
         
-        top_dot_ball_bowlers = dot_balls.sort_values('Dot_Ball_Percentage', ascending=False).head(10)
+        st.subheader("Dot Ball Percentage")
+        dot_ball_fig = px.bar(
+            bowler_stats.sort_values('Dot Ball Percentage', ascending=False),
+            x='bowler',
+            y='Dot Ball Percentage',
+            title="Dot Ball Percentage per Bowler",
+            labels={'bowler': 'Bowler', 'Dot Ball Percentage': 'Dot Ball %'}
+        )
+        st.plotly_chart(dot_ball_fig, use_container_width=True)
         
-        if not top_dot_ball_bowlers.empty:
-            fig_dots = px.bar(
-                top_dot_ball_bowlers.reset_index(),
-                x='bowler',
-                y='Dot_Ball_Percentage',
-                title='Top 10 Bowlers - Dot Ball Percentage',
-                labels={'Dot_Ball_Percentage': 'Dot Ball %', 'bowler': 'Bowler'}
-            )
-            fig_dots.update_layout(xaxis_tickangle=45)
-            st.plotly_chart(fig_dots, use_container_width=True)
-    
-    # SHOT ANALYSIS
+        # Scatter plot: Economy rate vs. Wickets
+        economy_wicket_fig = px.scatter(
+            bowler_stats,
+            x='Economy Rate',
+            y='Wickets',
+            hover_name='bowler',
+            title="Economy Rate vs. Wickets",
+            labels={'Economy Rate': 'Economy Rate', 'Wickets': 'Total Wickets'}
+        )
+        st.plotly_chart(economy_wicket_fig, use_container_width=True)
+
     with tab4:
-        st.markdown("<div class='tab-header'>🎯 Shot Analysis</div>", unsafe_allow_html=True)
+        st.header("Shot Analysis")
         
-        # Player selection for shot analysis
-        available_batsmen = [b for b in df_filtered['batsman'].unique() if pd.notna(b) and b != 'Unknown']
-        selected_batsman = st.selectbox(
-            "Select Batsman for Shot Analysis",
-            options=sorted(available_batsmen)
-        )
+        # Player filter for this tab
+        shot_players = sorted(filtered_df['batsman'].unique())
+        selected_shot_player = st.selectbox("Select Player for Shot Analysis", options=shot_players)
         
-        player_data = df_filtered[
-            (df_filtered['batsman'] == selected_batsman) & 
-            (df_filtered['shotAngle'].notna()) & 
-            (df_filtered['shotMagnitude'].notna())
-        ]
-        
-        if not player_data.empty:
-            col1, col2 = st.columns([2, 1])
+        if selected_shot_player:
+            player_shots_df = filtered_df[filtered_df['batsman'] == selected_shot_player].copy()
             
-            with col1:
-                st.subheader(f"🌐 Wagon Wheel - {selected_batsman}")
-                
-                # Create wagon wheel using polar plot
-                fig_wagon = go.Figure()
-                
-                # Color by runs scored
-                colors = {0: 'gray', 1: 'blue', 2: 'green', 3: 'orange', 4: 'red', 6: 'purple'}
-                
-                for runs, color in colors.items():
-                    data = player_data[player_data['runs'] == runs]
-                    if not data.empty:
-                        fig_wagon.add_trace(go.Scatterpolar(
-                            r=data['shotMagnitude'],
-                            theta=data['shotAngle'],
-                            mode='markers',
-                            name=f'{runs} runs',
-                            marker=dict(color=color, size=8),
-                            hovertemplate=f'<b>{runs} runs</b><br>Angle: %{{theta}}°<br>Distance: %{{r}}<extra></extra>'
-                        ))
-                
-                fig_wagon.update_layout(
-                    title=f'Shot Distribution - {selected_batsman}',
-                    polar=dict(
-                        radialaxis=dict(visible=True, range=[0, player_data['shotMagnitude'].max() * 1.1]),
-                        angularaxis=dict(direction="clockwise")
-                    ),
-                    height=500
-                )
-                st.plotly_chart(fig_wagon, use_container_width=True)
-            
-            with col2:
-                st.subheader("📊 Shot Statistics")
-                
-                # Player shot stats
-                total_shots = len(player_data)
-                boundaries = len(player_data[player_data['runs'] >= 4])
-                avg_shot_distance = player_data['shotMagnitude'].mean()
-                
-                st.metric("Total Shots", total_shots)
-                st.metric("Boundaries", boundaries)
-                st.metric("Avg Shot Distance", f"{avg_shot_distance:.1f}")
-                
-                # Shot type analysis
-                if 'battingShotTypeId' in player_data.columns:
-                    st.subheader("🎯 Shot Types")
-                    shot_types = player_data.groupby('battingShotTypeId').agg({
-                        'runs': ['count', 'mean', 'sum']
-                    }).round(2)
-                    shot_types.columns = ['Frequency', 'Avg_Runs', 'Total_Runs']
-                    shot_types = shot_types.sort_values('Total_Runs', ascending=False)
-                    st.dataframe(shot_types, use_container_width=True)
-        else:
-            st.info(f"No shot data available for {selected_batsman}")
-    
-    # MATCH EXPLORER
-    with tab5:
-        st.markdown("<div class='tab-header'>📊 Match Explorer</div>", unsafe_allow_html=True)
-        
-        # Match selection
-        available_matches = df_filtered['fixtureId'].unique()
-        selected_match = st.selectbox(
-            "Select Match",
-            options=sorted(available_matches)
-        )
-        
-        match_data = df_filtered[df_filtered['fixtureId'] == selected_match]
-        
-        if not match_data.empty:
-            # Match summary
-            st.subheader(f"📋 Match Summary - Fixture {selected_match}")
-            
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Total Balls", len(match_data))
-            with col2:
-                st.metric("Total Runs", int(match_data['runs'].sum()))
-            with col3:
-                st.metric("Total Wickets", int(match_data['isWicket'].sum()))
-            with col4:
-                avg_rr = match_data['runrate'].mean()
-                st.metric("Average Run Rate", f"{avg_rr:.2f}")
-            
-            # Ball by ball data
-            st.subheader("⚾ Ball-by-Ball Data")
-            
-            # Select relevant columns for ball-by-ball
-            ball_by_ball = match_data[[
-                'ballNumber', 'batsman', 'bowler', 'runs', 'isWicket', 
-                'commentary', 'runrate'
-            ]].copy()
-            
-            ball_by_ball = ball_by_ball.sort_values('ballNumber')
-            st.dataframe(ball_by_ball, use_container_width=True, height=300)
-            
-            # Cumulative runs chart
-            st.subheader("📈 Cumulative Runs Progress")
-            
-            match_data_sorted = match_data.sort_values('ballNumber')
-            match_data_sorted['cumulative_runs'] = match_data_sorted['runs'].cumsum()
-            
-            fig_cumulative = px.line(
-                match_data_sorted,
-                x='ballNumber',
-                y='cumulative_runs',
-                title=f'Cumulative Runs - Match {selected_match}',
-                labels={'ballNumber': 'Ball Number', 'cumulative_runs': 'Cumulative Runs'}
+            # Wagon wheel plot
+            st.subheader(f"Wagon Wheel for {selected_shot_player}")
+            wagon_wheel_fig = px.scatter_polar(
+                player_shots_df,
+                r='shotMagnitude',
+                theta='shotAngle',
+                color='battingShotTypeId',
+                size='runsScored',
+                hover_data=['battingShotTypeId', 'runsScored'],
+                title=f"Shot Placement and Runs for {selected_shot_player}"
             )
-            st.plotly_chart(fig_cumulative, use_container_width=True)
-        else:
-            st.info("No data available for selected match")
-    
-    # Footer
-    st.markdown("---")
-    st.markdown("**🏏 Hundred Women's Cricket Analysis Dashboard** | Data Source: The Hundred Tournament")
+            wagon_wheel_fig.update_layout(polar_angularaxis=dict(direction="clockwise", tickvals=np.arange(0, 361, 45)))
+            st.plotly_chart(wagon_wheel_fig, use_container_width=True)
+            
+            # Shot types with average runs table
+            shot_type_runs = player_shots_df.groupby('battingShotTypeId').agg(
+                TotalRuns=('runsScored', 'sum'),
+                TotalShots=('battingShotTypeId', 'count'),
+                AverageRuns=('runsScored', 'mean')
+            ).reset_index().sort_values('TotalRuns', ascending=False)
+            
+            st.subheader("Shot Types and Average Runs")
+            st.dataframe(shot_type_runs.round(2), hide_index=True)
+
+    with tab5:
+        st.header("Match Explorer")
+        
+        all_matches = sorted(filtered_df['fixtureId'].unique())
+        selected_match_id = st.selectbox("Select a Match", options=all_matches)
+        
+        if selected_match_id:
+            match_df = filtered_df[filtered_df['fixtureId'] == selected_match_id].copy()
+            
+            st.subheader("Ball-by-Ball Commentary")
+            st.dataframe(
+                match_df[['ballNumber', 'battingTeam', 'bowlingTeam', 'batsman', 'bowler', 'commentary', 'runsScored']],
+                hide_index=True
+            )
+            
+            # Cumulative runs over balls graph
+            st.subheader("Cumulative Runs Over Balls")
+            match_df['cumulative_runs_batting'] = match_df.groupby(['fixtureId', 'battingTeam'])['runsScored'].cumsum()
+            match_df['cumulative_runs_bowling'] = match_df.groupby(['fixtureId', 'bowlingTeam'])['runsConceded'].cumsum()
+            
+            # Get the two teams in the match
+            teams_in_match = match_df['battingTeam'].unique()
+            
+            fig = make_subplots(specs=[[{"secondary_y": True}]])
+            
+            for team in teams_in_match:
+                team_data = match_df[match_df['battingTeam'] == team]
+                fig.add_trace(go.Scatter(
+                    x=team_data['totalBallNumber'], 
+                    y=team_data['cumulative_runs_batting'],
+                    mode='lines+markers',
+                    name=f'{team} Runs'
+                ))
+            
+            fig.update_layout(
+                title_text="Cumulative Runs Over Balls",
+                xaxis_title="Ball Number",
+                yaxis_title="Total Runs"
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
 if __name__ == "__main__":
     main()
