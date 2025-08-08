@@ -68,77 +68,170 @@ st.markdown("""
     .insight-title {
         font-weight: bold;
         color: #495057;
-        margin-bottom: 0.5rem;import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import requests
-from io import StringIO
-from datetime import datetime
-
-# Set page config
-st.set_page_config(
-    page_title="Women's Cricket Shot Intelligence Matrix",
-    page_icon="🏏",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# Custom CSS for better styling
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: #1f77b4;
-        text-align: center;
-        margin-bottom: 2rem;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 0.5rem;
     }
-    .metric-card {
-        background: linear-gradient(135deg, #f0f2f6 0%, #e8f4fd 100%);
-        padding: 1.5rem;
-        border-radius: 0.75rem;
-        border-left: 4px solid #1f77b4;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        margin: 0.5rem 0;
+    .insight-content {
+        color: #6c757d;
+        font-size: 0.95rem;
     }
-    .insight-box {
-        background: linear-gradient(135deg, #e8f4fd 0%, #f0f8ff 100%);
-        padding: 1.5rem;
-        border-radius: 0.75rem;
-        border: 2px solid #1f77b4;
-        margin: 1rem 0;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    .bowling-recommendation {
+        background-color: #f8f9fa;
+        padding: 0.5rem;
+        border-radius: 0.375rem;
+        margin-top: 0.5rem;
+        border-left: 3px solid #dc3545;
     }
-    .player-card {
-        background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%);
+    .recommendation-item {
+        margin-bottom: 0.25rem;
+        font-size: 0.9rem;
+    }
+    .connection-note {
+        font-style: italic;
+        color: #6c757d;
+        font-size: 0.85rem;
+        margin-top: 0.25rem;
+    }
+    .advanced-metric {
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
         padding: 1rem;
         border-radius: 0.5rem;
-        border: 1px solid #dee2e6;
+        border: 1px solid #2196f3;
         margin: 0.5rem 0;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
-    .stMetric > div[data-testid="metric-container"] {
-        background-color: rgba(255,255,255,0.05);
-        border: 1px solid rgba(49,51,63,0.2);
-        padding: 0.5rem;
-        border-radius: 0.5rem;
+</style>
+""", unsafe_allow_html=True)
+
+
+@st.cache_data
+def load_data_from_github(github_url=None):
+    """Load cricket data from GitHub repository"""
+    try:
+        if github_url is None:
+            github_url = "https://raw.githubusercontent.com/Krithika0808/Hundred/main/Hundred.csv"
+        
+        response = requests.get(github_url)
+        response.raise_for_status() 
+        
+        csv_content = StringIO(response.text)
+        df = pd.read_csv(csv_content)
+        
+        if df.empty:
+            return df
+            
+        numeric_columns = ['shotAngle', 'shotMagnitude', 'runs', 'totalBallNumber']
+        for col in numeric_columns:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        bool_columns = ['isWicket', 'isBoundary', 'isAirControlled', 'isWide', 'isNoBall']
+        for col in bool_columns:
+            if col in df.columns:
+                df[col] = df[col].astype(bool)
+        
+        string_columns = ['batsman', 'bowler', 'battingShotTypeId', 'battingConnectionId', 'commentary']
+        for col in string_columns:
+            if col in df.columns:
+                df[col] = df[col].astype(str).str.strip()
+        
+        essential_columns = [col for col in ['batsman', 'runs', 'totalBallNumber'] if col in df.columns]
+        if essential_columns:
+            df = df.dropna(subset=essential_columns)
+        
+        if 'matchDate' in df.columns:
+            df['matchDate'] = pd.to_datetime(df['matchDate'], errors='coerce')
+            df['season'] = df['matchDate'].dt.year
+        
+        return df
+        
+    except requests.exceptions.RequestException as e:
+        st.error(f"❌ Error fetching data from GitHub: {str(e)}")
+        st.info("Creating sample data for demonstration...")
+        return create_sample_data()
+    except Exception as e:
+        st.error(f"❌ Error processing data: {str(e)}")
+        st.info("Creating sample data for demonstration...")
+        return create_sample_data()
+
+def create_sample_data():
+    """Create sample cricket data for demonstration"""
+    np.random.seed(42)
+    
+    players = ['Smriti Mandhana', 'Harmanpreet Kaur', 'Beth Mooney', 'Alyssa Healy', 'Meg Lanning']
+    bowlers = ['Jess Jonassen', 'Sophie Ecclestone', 'Ashleigh Gardner', 'Shabnim Ismail', 'Marizanne Kapp']
+    shot_types = ['Drive', 'Pull', 'Cut', 'Sweep', 'Flick', 'Hook', 'Reverse Sweep', 'Loft']
+    connection_types = ['Middled', 'WellTimed', 'Undercontrol', 'MisTimed', 'Missed', 'HitBody']
+    
+    length_types = ['Yorker', 'Full', 'Good Length', 'Short', 'Bouncer']
+    line_types = ['Off Stump', 'Middle Stump', 'Leg Stump', 'Wide Outside Off', 'DownLeg']
+    bowling_types = ['Fast', 'Medium', 'Spin', 'Swing', 'Seam']
+    bowling_from = ['Over the Wicket', 'Around the Wicket']
+    bowling_hands = ['Right Arm', 'Left Arm']
+    
+    n_rows = 1000
+    
+    data = {
+        'batsman': np.random.choice(players, n_rows),
+        'bowler': np.random.choice(bowlers, n_rows),
+        'battingShotTypeId': np.random.choice(shot_types, n_rows),
+        'battingConnectionId': np.random.choice(connection_types, n_rows, p=[0.3, 0.25, 0.2, 0.15, 0.05, 0.05]),
+        'runs': np.random.choice([0, 1, 2, 3, 4, 6], n_rows, p=[0.3, 0.25, 0.2, 0.1, 0.1, 0.05]),
+        'totalBallNumber': np.random.randint(1, 101, n_rows),
+        'shotAngle': np.random.uniform(0, 360, n_rows),
+        'shotMagnitude': np.random.uniform(50, 200, n_rows),
+        'isAirControlled': np.random.choice([True, False], n_rows, p=[0.3, 0.7]),
+        'isBoundary': np.random.choice([True, False], n_rows, p=[0.15, 0.85]),
+        'isWicket': np.random.choice([True, False], n_rows, p=[0.05, 0.95]),
+        'commentary': ['Good shot!', 'Excellent timing!', 'Mistimed!', 'Great connection!'] * (n_rows // 4),
+        'fixtureId': np.random.randint(1, 21, n_rows),
+        'battingTeam': np.random.choice(['Team A', 'Team B', 'Team C', 'Team D'], n_rows),
+        'matchDate': pd.to_datetime(pd.to_datetime('2023-01-01') + pd.to_timedelta(np.random.randint(0, 365, n_rows), unit='d')),
+        'lengthTypeId': np.random.choice(length_types, n_rows),
+        'lineTypeId': np.random.choice(line_types, n_rows),
+        'bowlingTypeId': np.random.choice(bowling_types, n_rows),
+        'bowlingFromId': np.random.choice(bowling_from, n_rows),
+        'bowlingHandId': np.random.choice(bowling_hands, n_rows)
     }
-    .insight-card {
-        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-        padding: 1.5rem;
-        border-radius: 0.75rem;
-        border: 1px solid #dee2e6;
-        margin: 1rem 0;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-    .insight-title {
-        font-weight: bold;
-        color: #495057;
-        margin-bottom: 0.5rem;        'ThickEdge': 3,
+    
+    df = pd.DataFrame(data)
+    
+    df.loc[df['runs'] == 4, 'isBoundary'] = True
+    df.loc[df['runs'] == 6, 'isBoundary'] = True
+    df.loc[df['runs'] < 4, 'isBoundary'] = False
+    
+    def generate_commentary(row):
+        if row['runs'] == 6:
+            return f"SIX! {row['battingShotTypeId']} shot for maximum!"
+        elif row['runs'] == 4:
+            return f"FOUR! Beautiful {row['battingShotTypeId']} to the boundary!"
+        elif row['battingConnectionId'] == 'Middled':
+            return f"Perfect {row['battingShotTypeId']} shot!"
+        elif row['battingConnectionId'] == 'MisTimed':
+            return f"Mistimed {row['battingShotTypeId']}"
+        else:
+            return f"{row['battingShotTypeId']} shot for {row['runs']} runs"
+    
+    df['commentary'] = df.apply(generate_commentary, axis=1)
+    
+    return df
+
+
+def false_shot_score(connection_id):
+    """Calculate false shot score based on batting connection"""
+    false_shot_mapping = {
+        'Middled': 0,
+        'WellTimed': 0,
+        'Undercontrol': 0,
+        'Left': 0,
+        'MisTimed': 3,
+        'Mis-timed': 3,
+        'BottomEdge': 4,
+        'TopEdge': 4,
+        'BatPad': 4,
+        'InsideEdge': 3,
+        'LeadingEdge': 4,
+        'OutsideEdge': 3,
+        'Gloved': 3,
+        'ThickEdge': 3,
         'Missed': 5,
         'PlayAndMiss': 5,
         'PlayAndMissLegSide': 5,
@@ -826,13 +919,14 @@ else:
     filtered_df = df[df['batsman'].isin(selected_players)]
 
     # Dynamic tabs
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "Dashboard",
         "Shot Placement",
         "Shot Matrix",
         "Match Phase Analysis",
         "Player Comparison",
-        "Advanced Analytics"
+        "Advanced Analytics",
+        "Bowler Pressure Analysis"
     ])
     
     with tab1:
@@ -1110,134 +1204,118 @@ else:
             
             except Exception as e:
                 st.error(f"Error in false shot analysis: {e}")
+    
+    with tab7:
+        st.subheader("🎯 Bowler Pressure Analysis")
+        st.markdown(
+            """
+            This section provides a deep-dive into bowlers who consistently induce false shots,
+            making them a high-pressure threat to batsmen.
+            """
+        )
 
+        pressure_tab1, pressure_tab2 = st.tabs([
+            "📊 Bowler Pressure Index",
+            "🔍 False Shot Patterns"
+        ])
 
-# --- New Tab 7 Code ---
-# This code block should be placed within the main app structure, alongside tab1, tab2, etc.
+        with pressure_tab1:
+            st.markdown("##### 📈 Bowler Pressure Index")
+            st.markdown("Ranking bowlers by their ability to induce false shots (a high score indicates more pressure).")
 
-# st.tabs([... "Advanced Analytics", "Bowler Pressure Analysis"])
-# ...
-
- with tab7:
-    st.subheader("🎯 Bowler Pressure Analysis")
-    st.markdown(
-        """
-        This section provides a deep-dive into bowlers who consistently induce false shots,
-        making them a high-pressure threat to batsmen.
-        """
-    )
-
-    # Create sub-tabs for different views of the data
-    pressure_tab1, pressure_tab2 = st.tabs([
-        "📊 Bowler Pressure Index",
-        "🔍 False Shot Patterns"
-    ])
-
-    with pressure_tab1:
-        st.markdown("##### 📈 Bowler Pressure Index")
-        st.markdown("Ranking bowlers by their ability to induce false shots (a high score indicates more pressure).")
-
-        try:
-            # Filter for bowlers with a minimum number of balls to ensure statistical significance
-            min_balls_bowled = 20
-            
-            # Use the bowler summary from the create_bowling_effectiveness_chart function
-            if 'bowler' in filtered_df.columns and 'false_shot_score' in filtered_df.columns:
-                bowler_pressure_df = filtered_df.groupby('bowler').agg(
-                    total_false_shots=('false_shot_score', 'sum'),
-                    balls_bowled=('totalBallNumber', 'count'),
-                    runs_conceded=('runs', 'sum'),
-                    avg_control_against=('control_score', 'mean')
-                ).round(2).reset_index()
-
-                bowler_pressure_df = bowler_pressure_df[bowler_pressure_df['balls_bowled'] >= min_balls_bowled]
-
-                if not bowler_pressure_df.empty:
-                    bowler_pressure_df['Pressure Index'] = bowler_pressure_df['total_false_shots'] / bowler_pressure_df['balls_bowled']
-                    bowler_pressure_df['Economy'] = bowler_pressure_df['runs_conceded'] / bowler_pressure_df['balls_bowled']
-                    
-                    bowler_pressure_df = bowler_pressure_df[[
-                        'bowler', 'Pressure Index', 'Economy', 'balls_bowled', 'avg_control_against'
-                    ]]
-                    bowler_pressure_df.columns = [
-                        'Bowler', 'Pressure Index', 'Economy', 'Balls Bowled', 'Avg Control Against'
-                    ]
-                    
-                    bowler_pressure_df = bowler_pressure_df.sort_values('Pressure Index', ascending=False)
-
-                    st.dataframe(bowler_pressure_df, use_container_width=True)
-
-                    st.markdown("""
-                        **Interpretation:**
-                        - **High Pressure Index:** The bowler consistently forces batsmen into mistakes (e.g., edges, play-and-misses).
-                        - **Low Economy + High Pressure Index:** This is a lethal combination. The bowler is a genuine threat to take wickets.
-                    """)
-                else:
-                    st.info(f"No bowlers with sufficient data (minimum {min_balls_bowled} balls bowled).")
-            else:
-                st.info("Bowler or false shot data not available in the current selection.")
-
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
-
-    with pressure_tab2:
-        st.markdown("##### 🔍 False Shot Patterns by Bowler")
-        st.markdown("Visualizing which types of shots each bowler is most effective at causing errors in.")
-
-        try:
-            if 'bowler' in filtered_df.columns and 'false_shot_score' in filtered_df.columns and 'battingShotTypeId' in filtered_df.columns:
+            try:
+                min_balls_bowled = 20
                 
-                # Get unique bowlers from the filtered dataframe
-                available_bowlers = filtered_df['bowler'].unique()
-                if len(available_bowlers) > 1:
-                    selected_bowler = st.selectbox("Select a Bowler", options=sorted(available_bowlers))
-                elif len(available_bowlers) == 1:
-                    selected_bowler = available_bowlers[0]
-                    st.write(f"Analyzing false shot patterns for **{selected_bowler}**")
-                else:
-                    st.info("No bowler data available for this analysis.")
-                    selected_bowler = None
+                if 'bowler' in filtered_df.columns and 'false_shot_score' in filtered_df.columns:
+                    bowler_pressure_df = filtered_df.groupby('bowler').agg(
+                        total_false_shots=('false_shot_score', 'sum'),
+                        balls_bowled=('totalBallNumber', 'count'),
+                        runs_conceded=('runs', 'sum'),
+                        avg_control_against=('control_score', 'mean')
+                    ).round(2).reset_index()
 
-                if selected_bowler:
-                    bowler_data = filtered_df[filtered_df['bowler'] == selected_bowler]
-                    
-                    if not bowler_data.empty and len(bowler_data) >= 10:
-                        
-                        # False shot score distribution for the selected bowler
-                        false_shot_dist = bowler_data['false_shot_score'].value_counts().sort_index()
-                        
-                        fig_dist_bowler = px.bar(
-                            x=false_shot_dist.index,
-                            y=false_shot_dist.values,
-                            title=f'False Shot Score Distribution for {selected_bowler}',
-                            labels={'x': 'False Shot Score', 'y': 'Frequency'},
-                            color=false_shot_dist.index,
-                            color_continuous_scale='RdYlGn_r'
-                        )
-                        st.plotly_chart(fig_dist_bowler, use_container_width=True)
+                    bowler_pressure_df = bowler_pressure_df[bowler_pressure_df['balls_bowled'] >= min_balls_bowled]
 
-                        # Most vulnerable shot types table
-                        st.markdown("###### Most Vulnerable Shot Types Against This Bowler")
+                    if not bowler_pressure_df.empty:
+                        bowler_pressure_df['Pressure Index'] = bowler_pressure_df['total_false_shots'] / bowler_pressure_df['balls_bowled']
+                        bowler_pressure_df['Economy'] = bowler_pressure_df['runs_conceded'] / bowler_pressure_df['balls_bowled']
                         
-                        shot_vulnerability = bowler_data.groupby('battingShotTypeId').agg({
-                            'false_shot_score': ['mean', 'count'],
-                            'control_score': 'mean',
-                            'runs': 'mean'
-                        }).round(2)
+                        bowler_pressure_df = bowler_pressure_df[[
+                            'bowler', 'Pressure Index', 'Economy', 'balls_bowled', 'avg_control_against'
+                        ]]
+                        bowler_pressure_df.columns = [
+                            'Bowler', 'Pressure Index', 'Economy', 'Balls Bowled', 'Avg Control Against'
+                        ]
                         
-                        shot_vulnerability.columns = ['Avg False Shot Score', 'Frequency', 'Avg Control Score', 'Avg Runs']
-                        shot_vulnerability = shot_vulnerability[shot_vulnerability['Frequency'] >= 3] # Filter low-sample shots
-                        shot_vulnerability = shot_vulnerability.sort_values('Avg False Shot Score', ascending=False)
-                        st.dataframe(shot_vulnerability, use_container_width=True)
+                        bowler_pressure_df = bowler_pressure_df.sort_values('Pressure Index', ascending=False)
 
+                        st.dataframe(bowler_pressure_df, use_container_width=True)
+
+                        st.markdown("""
+                            **Interpretation:**
+                            - **High Pressure Index:** The bowler consistently forces batsmen into mistakes (e.g., edges, play-and-misses).
+                            - **Low Economy + High Pressure Index:** This is a lethal combination. The bowler is a genuine threat to take wickets.
+                        """)
                     else:
-                        st.info(f"Not enough data for {selected_bowler} to perform a detailed analysis (minimum 10 balls).")
+                        st.info(f"No bowlers with sufficient data (minimum {min_balls_bowled} balls bowled).")
+                else:
+                    st.info("Bowler or false shot data not available in the current selection.")
 
-            else:
-                st.info("Required data columns ('bowler', 'false_shot_score', 'battingShotTypeId') are not available.")
+            except Exception as e:
+                st.error(f"An error occurred: {e}")
 
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
+        with pressure_tab2:
+            st.markdown("##### 🔍 False Shot Patterns by Bowler")
+            st.markdown("Visualizing which types of shots each bowler is most effective at causing errors in.")
 
+            try:
+                if 'bowler' in filtered_df.columns and 'false_shot_score' in filtered_df.columns and 'battingShotTypeId' in filtered_df.columns:
+                    
+                    available_bowlers = filtered_df['bowler'].unique()
+                    if len(available_bowlers) > 1:
+                        selected_bowler = st.selectbox("Select a Bowler", options=sorted(available_bowlers))
+                    elif len(available_bowlers) == 1:
+                        selected_bowler = available_bowlers[0]
+                        st.write(f"Analyzing false shot patterns for **{selected_bowler}**")
+                    else:
+                        st.info("No bowler data available for this analysis.")
+                        selected_bowler = None
 
+                    if selected_bowler:
+                        bowler_data = filtered_df[filtered_df['bowler'] == selected_bowler]
+                        
+                        if not bowler_data.empty and len(bowler_data) >= 10:
+                            
+                            false_shot_dist = bowler_data['false_shot_score'].value_counts().sort_index()
+                            
+                            fig_dist_bowler = px.bar(
+                                x=false_shot_dist.index,
+                                y=false_shot_dist.values,
+                                title=f'False Shot Score Distribution for {selected_bowler}',
+                                labels={'x': 'False Shot Score', 'y': 'Frequency'},
+                                color=false_shot_dist.index,
+                                color_continuous_scale='RdYlGn_r'
+                            )
+                            st.plotly_chart(fig_dist_bowler, use_container_width=True)
 
+                            st.markdown("###### Most Vulnerable Shot Types Against This Bowler")
+                            
+                            shot_vulnerability = bowler_data.groupby('battingShotTypeId').agg({
+                                'false_shot_score': ['mean', 'count'],
+                                'control_score': 'mean',
+                                'runs': 'mean'
+                            }).round(2)
+                            
+                            shot_vulnerability.columns = ['Avg False Shot Score', 'Frequency', 'Avg Control Score', 'Avg Runs']
+                            shot_vulnerability = shot_vulnerability[shot_vulnerability['Frequency'] >= 3]
+                            shot_vulnerability = shot_vulnerability.sort_values('Avg False Shot Score', ascending=False)
+                            st.dataframe(shot_vulnerability, use_container_width=True)
+
+                        else:
+                            st.info(f"Not enough data for {selected_bowler} to perform a detailed analysis (minimum 10 balls).")
+
+                else:
+                    st.info("Required data columns ('bowler', 'false_shot_score', 'battingShotTypeId') are not available.")
+
+            except Exception as e:
+                st.error(f"An error occurred: {e}")
