@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import matplotlib as plt
 import numpy as np
 
 st.set_page_config(page_title="Hundred Batting Dashboard", layout="wide")
@@ -66,3 +66,4 @@ with tab1:
         st.pyplot(fig)
 
         st.caption("🔴 = Dismissal | 🔵 = Normal shot")
+
