@@ -142,10 +142,6 @@ def load_data_from_github(github_url=None):
         if essential_columns:
             df = df.dropna(subset=essential_columns)
         
-        if 'matchDate' in df.columns:
-            df['matchDate'] = pd.to_datetime(df['matchDate'], errors='coerce')
-            df['season'] = df['matchDate'].dt.year
-        
         return df
         
     except requests.exceptions.RequestException as e:
@@ -189,7 +185,6 @@ def create_sample_data():
         'commentary': ['Good shot!', 'Excellent timing!', 'Mistimed!', 'Great connection!'] * (n_rows // 4),
         'fixtureId': np.random.randint(1, 21, n_rows),
         'battingTeam': np.random.choice(['Team A', 'Team B', 'Team C', 'Team D'], n_rows),
-        'matchDate': pd.to_datetime(pd.to_datetime('2023-01-01') + pd.to_timedelta(np.random.randint(0, 365, n_rows), unit='d')),
         'lengthTypeId': np.random.choice(length_types, n_rows),
         'lineTypeId': np.random.choice(line_types, n_rows),
         'bowlingTypeId': np.random.choice(bowling_types, n_rows),
@@ -524,21 +519,6 @@ def create_player_comparison_radar(df, players):
     )
     return fig
 
-def create_player_form_chart(df, player_name):
-    """Creates a line chart for a player's form based on a rolling control score."""
-    player_data = df[df['batsman'] == player_name].sort_values('matchDate')
-    if player_data.empty or len(player_data['matchDate'].unique()) < 2:
-        return go.Figure()
-        
-    player_data['rolling_control'] = player_data['control_score'].rolling(window=10, min_periods=1).mean()
-    
-    fig = px.line(player_data, x='matchDate', y='rolling_control',
-                  title=f"{player_name}'s Form: Rolling Average Control Score (10-ball window)",
-                  labels={'rolling_control': 'Rolling Avg. Control Score', 'matchDate': 'Match Date'},
-                  line_shape='spline')
-    fig.update_layout(yaxis_range=[0, 100])
-    return fig
-
 def create_xruns_comparison_chart(df, player_name):
     """Creates a bar chart comparing actual runs to xRuns."""
     player_data = df[df['batsman'] == player_name]
@@ -638,7 +618,6 @@ else:
     
     all_players = sorted(df['batsman'].unique())
     all_bowlers = sorted(df['bowler'].unique())
-    all_seasons = sorted(df['season'].unique())
     
     st.markdown("<h1 class='main-header'>Women's Cricket Shot Intelligence Matrix 🏏</h1>", unsafe_allow_html=True)
     st.sidebar.header("Player and Match Selection")
@@ -653,16 +632,10 @@ else:
         st.warning("Please select at least one player.")
         st.stop()
     
-    selected_season = st.sidebar.multiselect("Filter by Season", options=all_seasons, default=all_seasons)
-    
-    filtered_df = df[
-        df['batsman'].isin(selected_players) &
-        df['season'].isin(selected_season)
-    ]
+    filtered_df = df[df['batsman'].isin(selected_players)]
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "Dashboard",
-        "Player Form",
         "Shot Placement",
         "Shot Matrix",
         "Match Phase Analysis",
@@ -702,33 +675,23 @@ else:
                 st.markdown('</div>', unsafe_allow_html=True)
     
     with tab2:
-        st.subheader("📈 Player Form Analysis")
-        if len(selected_players) == 1:
-            player_name = selected_players[0]
-            st.markdown(f"##### {player_name} - Control Score Trend")
-            form_fig = create_player_form_chart(filtered_df, player_name)
-            st.plotly_chart(form_fig, use_container_width=True)
-        else:
-            st.info("Please select only one player to view their form trend.")
-
-    with tab3:
         st.subheader(f"🌐 Shot Placement Intelligence for {', '.join(selected_players)}")
         for player in selected_players:
             st.markdown(f"##### {player}")
             shot_fig = create_shot_angle_heatmap(df, player)
             st.plotly_chart(shot_fig, use_container_width=True)
     
-    with tab4:
+    with tab3:
         st.subheader("📊 Shot Intelligence Matrix")
         control_aggression_fig = create_control_vs_aggression_chart(filtered_df)
         st.plotly_chart(control_aggression_fig, use_container_width=True)
         
-    with tab5:
+    with tab4:
         st.subheader("⏳ Performance Across Match Phases")
         match_phase_fig = create_match_phase_analysis(filtered_df)
         st.plotly_chart(match_phase_fig, use_container_width=True)
 
-    with tab6:
+    with tab5:
         st.subheader("⚖️ Player Comparison")
         if len(selected_players) >= 2:
             radar_fig = create_player_comparison_radar(df, selected_players)
@@ -736,7 +699,7 @@ else:
         else:
             st.info("Please select at least two players for comparison.")
     
-    with tab7:
+    with tab6:
         st.subheader("🔍 Advanced Cricket Analytics")
         adv_tab1, adv_tab2, adv_tab3, adv_tab4 = st.tabs([
             "💰 xRuns vs Actual Runs",
@@ -773,41 +736,7 @@ else:
             risk_fig = create_wicket_probability_heatmap(filtered_df)
             st.plotly_chart(risk_fig, use_container_width=True)
     
-    with tab8:
+    with tab7:
         st.subheader("🎯 Bowler Pressure Analysis")
-        pressure_tab1, pressure_tab2 = st.tabs([
-            "📊 Bowler Pressure Index",
-            "🔍 False Shot Patterns"
-        ])
-        with pressure_tab1:
-            st.markdown("##### 📈 Bowler Pressure Index")
-            bowler_pressure_df = filtered_df.groupby('bowler').agg(
-                total_false_shots=('false_shot_score', 'sum'),
-                balls_bowled=('runs', 'count'),
-                runs_conceded=('runs', 'sum'),
-                avg_control_against=('control_score', 'mean')
-            ).reset_index()
-            bowler_pressure_df = bowler_pressure_df[bowler_pressure_df['balls_bowled'] >= 5]
-            if not bowler_pressure_df.empty:
-                bowler_pressure_df['Pressure Index'] = bowler_pressure_df['total_false_shots'] / bowler_pressure_df['balls_bowled']
-                bowler_pressure_df['Economy'] = bowler_pressure_df['runs_conceded'] / bowler_pressure_df['balls_bowled']
-                st.dataframe(bowler_pressure_df.sort_values('Pressure Index', ascending=False), use_container_width=True)
-            else:
-                st.info("Not enough bowling data to show pressure index.")
-        with pressure_tab2:
-            st.markdown("##### 🔍 False Shot Patterns by Bowler")
-            if 'bowler' in filtered_df.columns:
-                available_bowlers = filtered_df['bowler'].unique()
-                selected_bowler = st.selectbox("Select a Bowler", options=sorted(available_bowlers))
-                if selected_bowler:
-                    bowler_data = filtered_df[filtered_df['bowler'] == selected_bowler]
-                    if not bowler_data.empty and len(bowler_data) >= 10:
-                        shot_vulnerability = bowler_data.groupby('battingShotTypeId').agg(
-                            avg_false_shot_score=('false_shot_score', 'mean'),
-                            count=('false_shot_score', 'count')
-                        ).reset_index()
-                        shot_vulnerability = shot_vulnerability[shot_vulnerability['count'] >= 3]
-                        st.dataframe(shot_vulnerability.sort_values('avg_false_shot_score', ascending=False), use_container_width=True)
-                    else:
-                        st.info("Not enough data for this bowler.")
-
+        # Placeholder for future implementation
+        st.info("This section is under development. A Bowler Pressure Index can be calculated based on the match context (e.g., required run rate, partnership strength) to evaluate a bowler's performance under pressure.")
