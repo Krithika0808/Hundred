@@ -1,10 +1,9 @@
 import streamlit as st
 import pandas as pd
-import matplotlib as plt
+import matplotlib.pyplot as plt
 import numpy as np
 
-st.set_page_config(page_title="Hundred Batting Dashboard", layout="wide")
-
+# Load data from GitHub
 @st.cache_data
 def load_data():
     url = "https://raw.githubusercontent.com/Krithika0808/Hundred/main/Hundred.csv"
@@ -12,58 +11,37 @@ def load_data():
 
 df = load_data()
 
-# Tab layout
-tab1, tab2, tab3 = st.tabs(["🧠 Batter's Blueprint", "📊 Other Tabs", "🔍 More Coming"])
+# Sidebar filters
+batter = st.sidebar.selectbox("Select Batter", sorted(df['batsman'].dropna().unique()))
+is_wicket = st.sidebar.selectbox("Wicket Only?", ["No", "Yes"])
+fielding_pos = st.sidebar.multiselect("Fielding Position", sorted(df['fieldingPosition'].dropna().unique()))
 
-with tab1:
-    st.title("🧠 Batter's Blueprint")
-    st.markdown("Explore a batter’s shot direction, dismissal zones, and strike pattern.")
+# Filter dataframe
+data = df[df['batsman'] == batter]
 
-    # Filters
-    batters = df['batsman'].dropna().unique()
-    selected_batter = st.selectbox("Select Batter", sorted(batters))
+if is_wicket == "Yes":
+    data = data[data['isWicket'] == 1]
 
-    bowling_types = df['bowlingTypeId'].dropna().unique()
-    selected_bowling = st.multiselect("Select Bowling Type", sorted(bowling_types), default=sorted(bowling_types))
+if fielding_pos:
+    data = data[data['fieldingPosition'].isin(fielding_pos)]
 
-    phase = st.radio("Select Over Phase", ["Powerplay", "Middle", "Death"])
+# Convert polar-like data (angle, magnitude) into Cartesian
+angles_rad = np.deg2rad(data['shotAngle'])
+x = data['shotMagnitude'] * np.cos(angles_rad)
+y = data['shotMagnitude'] * np.sin(angles_rad)
 
-    # Phase filter using totalBallNumber (each inning has 100 balls)
-    if phase == "Powerplay":
-        df_phase = df[df["totalBallNumber"] <= 25]
-    elif phase == "Middle":
-        df_phase = df[(df["totalBallNumber"] > 25) & (df["totalBallNumber"] <= 75)]
-    else:
-        df_phase = df[df["totalBallNumber"] > 75]
+# Plot wagon wheel without polar projection
+fig, ax = plt.subplots(figsize=(6, 6))
+ax.scatter(x, y, alpha=0.6, c="green", edgecolors="black")
 
-    # Apply filters
-    filtered_df = df_phase[
-        (df_phase["batsman"] == selected_batter) &
-        (df_phase["bowlingTypeId"].isin(selected_bowling)) &
-        (~df_phase["shotAngle"].isna()) &
-        (~df_phase["shotMagnitude"].isna())
-    ]
+# Styling to look like wagon wheel
+ax.set_aspect('equal')
+ax.set_xlim(-100, 100)
+ax.set_ylim(-100, 100)
+ax.axhline(0, color="black", lw=1)
+ax.axvline(0, color="black", lw=1)
+ax.set_xticks([])
+ax.set_yticks([])
+ax.set_title(f"Shot Map - {batter}")
 
-    st.markdown(f"### Shot Map for {selected_batter} ({phase})")
-
-    if filtered_df.empty:
-        st.warning("No data for selected filters.")
-    else:
-        # Plotting the wagon wheel
-        fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
-        angles = np.deg2rad(filtered_df['shotAngle'])
-        magnitudes = filtered_df['shotMagnitude']
-
-        # Color by dismissal
-        colors = ['red' if w == 1 else 'blue' for w in filtered_df['isWicket']]
-
-        ax.scatter(angles, magnitudes, c=colors, alpha=0.7)
-
-        ax.set_theta_zero_location("N")
-        ax.set_theta_direction(-1)
-        ax.set_rlim(0, max(magnitudes) + 10)
-        ax.set_title(f"{selected_batter} – Shot Map", va='bottom')
-        st.pyplot(fig)
-
-        st.caption("🔴 = Dismissal | 🔵 = Normal shot")
-
+st.pyplot(fig)
