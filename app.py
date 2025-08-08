@@ -91,7 +91,8 @@ def calculate_control_percentage(df):
     }).round(1)
     
     control_stats.columns = ['Control%', 'Total_Runs', 'Balls_Faced', 'Avg_Runs', 'Wickets_Lost']
-    return control_stats.reset_index()
+    control_stats = control_stats.reset_index()
+    return control_stats
 
 def create_wagon_wheel(df, player):
     """Create wagon wheel for a player"""
@@ -268,7 +269,7 @@ def main():
             color='Control%',
             color_continuous_scale='RdYlGn'
         )
-        fig_control.update_xaxis(tickangle=45)
+        fig_control.update_layout(xaxis_tickangle=45)
         st.plotly_chart(fig_control, use_container_width=True)
         
         # Detailed table
@@ -327,7 +328,7 @@ def main():
             color='Economy',
             color_continuous_scale='RdYlGn_r'
         )
-        fig_economy.update_xaxis(tickangle=45)
+        fig_economy.update_layout(xaxis_tickangle=45)
         st.plotly_chart(fig_economy, use_container_width=True)
         
         # Pressure vs Economy scatter
