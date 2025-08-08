@@ -1,99 +1,68 @@
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
+import matplotlib.pyplot as plt
+import numpy as np
 
-# Load data
+st.set_page_config(page_title="Hundred Batting Dashboard", layout="wide")
+
 @st.cache_data
 def load_data():
-    return pd.read_csv("hundred.csv")
+    url = "https://raw.githubusercontent.com/Krithika0808/Hundred/main/Hundred.csv"
+    return pd.read_csv(url)
 
 df = load_data()
 
-# Tab Setup
-st.title("🏏 The Hundred Shot Map Explorer")
-st.subheader("Tab 1: Wagon Wheel by Batter")
+# Tab layout
+tab1, tab2, tab3 = st.tabs(["🧠 Batter's Blueprint", "📊 Other Tabs", "🔍 More Coming"])
 
-# Sidebar Filters
-batter_list = sorted(df['batsman'].dropna().unique())
-selected_batter = st.selectbox("Select Batter", batter_list)
+with tab1:
+    st.title("🧠 Batter's Blueprint")
+    st.markdown("Explore a batter’s shot direction, dismissal zones, and strike pattern.")
 
-# Filter player data
-player_df = df[df['batsman'] == selected_batter].copy()
+    # Filters
+    batters = df['batsman'].dropna().unique()
+    selected_batter = st.selectbox("Select Batter", sorted(batters))
 
-# Fill missing values
-player_df['shotAngle'] = player_df['shotAngle'].fillna(0)
-player_df['shotMagnitude'] = player_df['shotMagnitude'].fillna(40)
-player_df['runs'] = player_df['runs'].fillna(0)
-player_df['fieldingPosition'] = player_df['fieldingPosition'].fillna("Unknown")
-player_df['battingShotTypeId'] = player_df['battingShotTypeId'].fillna("Unknown")
+    bowling_types = df['bowlingTypeId'].dropna().unique()
+    selected_bowling = st.multiselect("Select Bowling Type", sorted(bowling_types), default=sorted(bowling_types))
 
-# Define run color mapping
-colors = {
-    0: 'gray',
-    1: 'blue',
-    2: 'green',
-    3: 'orange',
-    4: 'red',
-    6: 'purple'
-}
+    phase = st.radio("Select Over Phase", ["Powerplay", "Middle", "Death"])
 
-# Create Wagon Wheel Plot
-fig = go.Figure()
+    # Phase filter using totalBallNumber (each inning has 100 balls)
+    if phase == "Powerplay":
+        df_phase = df[df["totalBallNumber"] <= 25]
+    elif phase == "Middle":
+        df_phase = df[(df["totalBallNumber"] > 25) & (df["totalBallNumber"] <= 75)]
+    else:
+        df_phase = df[df["totalBallNumber"] > 75]
 
-# Plot all non-dismissal shots grouped by run value
-for run_value in sorted(player_df['runs'].unique()):
-    run_df = player_df[(player_df['runs'] == run_value) & (player_df['isWicket'] != 1)]
-    fig.add_trace(go.Scatterpolar(
-        r=run_df['shotMagnitude'],
-        theta=run_df['shotAngle'],
-        mode='markers',
-        name=f'{run_value} runs',
-        marker=dict(
-            color=colors.get(run_value, 'black'),
-            size=8 + run_value * 1.5,
-            opacity=0.75,
-            line=dict(width=1, color='white')
-        ),
-        text=[
-            f"Shot: {s}<br>Fielded at: {f}" 
-            for s, f in zip(run_df['battingShotTypeId'], run_df['fieldingPosition'])
-        ],
-        hovertemplate='<b>%{text}</b><br>Angle: %{theta}°<br>Distance: %{r}<extra></extra>'
-    ))
+    # Apply filters
+    filtered_df = df_phase[
+        (df_phase["batsman"] == selected_batter) &
+        (df_phase["bowlingTypeId"].isin(selected_bowling)) &
+        (~df_phase["shotAngle"].isna()) &
+        (~df_phase["shotMagnitude"].isna())
+    ]
 
-# Add dismissals as separate red X markers
-wicket_df = player_df[player_df['isWicket'] == 1]
-fig.add_trace(go.Scatterpolar(
-    r=wicket_df['shotMagnitude'],
-    theta=wicket_df['shotAngle'],
-    mode='markers',
-    name='Wickets',
-    marker=dict(
-        symbol='x',
-        color='crimson',
-        size=12,
-        line=dict(width=2, color='black')
-    ),
-    text=[
-        f"Dismissal: {s}<br>Fielded at: {f}" 
-        for s, f in zip(wicket_df['battingShotTypeId'], wicket_df['fieldingPosition'])
-    ],
-    hovertemplate='<b>%{text}</b><br>Angle: %{theta}°<br>Distance: %{r}<extra></extra>'
-))
+    st.markdown(f"### Shot Map for {selected_batter} ({phase})")
 
-# Layout settings
-fig.update_layout(
-    title=f"Wagon Wheel – {selected_batter}",
-    polar=dict(
-        radialaxis=dict(visible=True, range=[0, 100]),
-        angularaxis=dict(
-            tickmode='array',
-            tickvals=[0, 45, 90, 135, 180, 225, 270, 315],
-            ticktext=['Straight', 'Cover', 'Point', 'Third Man', 'Fine Leg', 'Square Leg', 'Midwicket', 'Long On']
-        )
-    ),
-    showlegend=True,
-    height=650
-)
+    if filtered_df.empty:
+        st.warning("No data for selected filters.")
+    else:
+        # Plotting the wagon wheel
+        fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+        angles = np.deg2rad(filtered_df['shotAngle'])
+        magnitudes = filtered_df['shotMagnitude']
 
-st.plotly_chart(fig, use_container_width=True)
+        # Color by dismissal
+        colors = ['red' if w == 1 else 'blue' for w in filtered_df['isWicket']]
+
+        ax.scatter(angles, magnitudes, c=colors, alpha=0.7)
+
+        ax.set_theta_zero_location("N")
+        ax.set_theta_direction(-1)
+        ax.set_rlim(0, max(magnitudes) + 10)
+        ax.set_title(f"{selected_batter} – Shot Map", va='bottom')
+        st.pyplot(fig)
+
+        st.caption("🔴 = Dismissal | 🔵 = Normal shot")
