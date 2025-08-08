@@ -1204,3 +1204,132 @@ else:
             except Exception as e:
                 st.error(f"Error in false shot analysis: {e}")
 
+
+# --- New Tab 7 Code ---
+# This code block should be placed within the main app structure, alongside tab1, tab2, etc.
+
+# st.tabs([... "Advanced Analytics", "Bowler Pressure Analysis"])
+# ...
+
+ with tab7:
+    st.subheader("🎯 Bowler Pressure Analysis")
+    st.markdown(
+        """
+        This section provides a deep-dive into bowlers who consistently induce false shots,
+        making them a high-pressure threat to batsmen.
+        """
+    )
+
+    # Create sub-tabs for different views of the data
+    pressure_tab1, pressure_tab2 = st.tabs([
+        "📊 Bowler Pressure Index",
+        "🔍 False Shot Patterns"
+    ])
+
+    with pressure_tab1:
+        st.markdown("##### 📈 Bowler Pressure Index")
+        st.markdown("Ranking bowlers by their ability to induce false shots (a high score indicates more pressure).")
+
+        try:
+            # Filter for bowlers with a minimum number of balls to ensure statistical significance
+            min_balls_bowled = 20
+            
+            # Use the bowler summary from the create_bowling_effectiveness_chart function
+            if 'bowler' in filtered_df.columns and 'false_shot_score' in filtered_df.columns:
+                bowler_pressure_df = filtered_df.groupby('bowler').agg(
+                    total_false_shots=('false_shot_score', 'sum'),
+                    balls_bowled=('totalBallNumber', 'count'),
+                    runs_conceded=('runs', 'sum'),
+                    avg_control_against=('control_score', 'mean')
+                ).round(2).reset_index()
+
+                bowler_pressure_df = bowler_pressure_df[bowler_pressure_df['balls_bowled'] >= min_balls_bowled]
+
+                if not bowler_pressure_df.empty:
+                    bowler_pressure_df['Pressure Index'] = bowler_pressure_df['total_false_shots'] / bowler_pressure_df['balls_bowled']
+                    bowler_pressure_df['Economy'] = bowler_pressure_df['runs_conceded'] / bowler_pressure_df['balls_bowled']
+                    
+                    bowler_pressure_df = bowler_pressure_df[[
+                        'bowler', 'Pressure Index', 'Economy', 'balls_bowled', 'avg_control_against'
+                    ]]
+                    bowler_pressure_df.columns = [
+                        'Bowler', 'Pressure Index', 'Economy', 'Balls Bowled', 'Avg Control Against'
+                    ]
+                    
+                    bowler_pressure_df = bowler_pressure_df.sort_values('Pressure Index', ascending=False)
+
+                    st.dataframe(bowler_pressure_df, use_container_width=True)
+
+                    st.markdown("""
+                        **Interpretation:**
+                        - **High Pressure Index:** The bowler consistently forces batsmen into mistakes (e.g., edges, play-and-misses).
+                        - **Low Economy + High Pressure Index:** This is a lethal combination. The bowler is a genuine threat to take wickets.
+                    """)
+                else:
+                    st.info(f"No bowlers with sufficient data (minimum {min_balls_bowled} balls bowled).")
+            else:
+                st.info("Bowler or false shot data not available in the current selection.")
+
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
+
+    with pressure_tab2:
+        st.markdown("##### 🔍 False Shot Patterns by Bowler")
+        st.markdown("Visualizing which types of shots each bowler is most effective at causing errors in.")
+
+        try:
+            if 'bowler' in filtered_df.columns and 'false_shot_score' in filtered_df.columns and 'battingShotTypeId' in filtered_df.columns:
+                
+                # Get unique bowlers from the filtered dataframe
+                available_bowlers = filtered_df['bowler'].unique()
+                if len(available_bowlers) > 1:
+                    selected_bowler = st.selectbox("Select a Bowler", options=sorted(available_bowlers))
+                elif len(available_bowlers) == 1:
+                    selected_bowler = available_bowlers[0]
+                    st.write(f"Analyzing false shot patterns for **{selected_bowler}**")
+                else:
+                    st.info("No bowler data available for this analysis.")
+                    selected_bowler = None
+
+                if selected_bowler:
+                    bowler_data = filtered_df[filtered_df['bowler'] == selected_bowler]
+                    
+                    if not bowler_data.empty and len(bowler_data) >= 10:
+                        
+                        # False shot score distribution for the selected bowler
+                        false_shot_dist = bowler_data['false_shot_score'].value_counts().sort_index()
+                        
+                        fig_dist_bowler = px.bar(
+                            x=false_shot_dist.index,
+                            y=false_shot_dist.values,
+                            title=f'False Shot Score Distribution for {selected_bowler}',
+                            labels={'x': 'False Shot Score', 'y': 'Frequency'},
+                            color=false_shot_dist.index,
+                            color_continuous_scale='RdYlGn_r'
+                        )
+                        st.plotly_chart(fig_dist_bowler, use_container_width=True)
+
+                        # Most vulnerable shot types table
+                        st.markdown("###### Most Vulnerable Shot Types Against This Bowler")
+                        
+                        shot_vulnerability = bowler_data.groupby('battingShotTypeId').agg({
+                            'false_shot_score': ['mean', 'count'],
+                            'control_score': 'mean',
+                            'runs': 'mean'
+                        }).round(2)
+                        
+                        shot_vulnerability.columns = ['Avg False Shot Score', 'Frequency', 'Avg Control Score', 'Avg Runs']
+                        shot_vulnerability = shot_vulnerability[shot_vulnerability['Frequency'] >= 3] # Filter low-sample shots
+                        shot_vulnerability = shot_vulnerability.sort_values('Avg False Shot Score', ascending=False)
+                        st.dataframe(shot_vulnerability, use_container_width=True)
+
+                    else:
+                        st.info(f"Not enough data for {selected_bowler} to perform a detailed analysis (minimum 10 balls).")
+
+            else:
+                st.info("Required data columns ('bowler', 'false_shot_score', 'battingShotTypeId') are not available.")
+
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
+
+
